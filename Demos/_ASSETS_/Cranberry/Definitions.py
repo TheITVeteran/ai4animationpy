@@ -1,5 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 RootName = "body_world"
+
 HipName = "b_root"
 NeckName = "b_neck0"
 HeadName = "b_head"
@@ -63,5 +64,3 @@ FULL_BODY_NAMES = [
     RightWristTwistName,
     RightWristName
 ]
-
-THREE_POINT_NAMES = [HeadName, LeftWristName, RightWristName]
