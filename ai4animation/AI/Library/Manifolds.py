@@ -6,6 +6,8 @@ import torch.nn.functional as F
 def Softmax(logits, classes):
     return F.softmax(logits.reshape(-1, classes), dim=-1).reshape(logits.shape)
 
+def Argmax(probs, classes):
+    return F.one_hot(probs.reshape(probs.shape[0], -1, classes).argmax(dim=-1), classes).reshape(probs.shape)
 
 def Gumbel(logits, classes, noise=None, temperature=1.0, hard=False, eps=1e-10):
     """

@@ -7,6 +7,26 @@ from ai4animation.AI.Library.Layers import CodebookLayer
 from ai4animation.AI.Library.Statistics import RunningStatistics
 from ai4animation.AI.Models import CategoricalEncoderDecoder, MultiLayerPerceptron
 
+from sklearn.decomposition import PCA
+import numpy as np
+
+def plot_pca(ax, tensor, title, labels=None):
+    """tensor: [B, D] torch tensor of probs or codes."""
+    ax.clear()
+    X = tensor.detach().cpu().numpy()
+    if X.shape[1] < 2:
+        return
+    X2 = PCA(n_components=2).fit_transform(X)
+    if labels is None:
+        ax.scatter(X2[:, 0], X2[:, 1], s=8, alpha=0.6)
+    else:
+        labels = np.asarray(labels)
+        for c in np.unique(labels):
+            m = labels == c
+            ax.scatter(X2[m, 0], X2[m, 1], s=8, alpha=0.6, label=f"cls {c}")
+        ax.legend(fontsize=7, loc="best")
+    ax.set_title(title)
+    ax.set_xlabel("PC1"); ax.set_ylabel("PC2")
 
 # Codebook Matching Model
 class Model(nn.Module):
@@ -74,14 +94,37 @@ class Prior(nn.Module):
         features = self.FeatureStatistics.Normalize(features)
         logits = self.encode(features)
         codes = self.Codebook(logits, sample=True)
+        probs = self.Codebook(logits, sample=False)
+
+
+        # # probs: [B, Channels * Classes]  -- per-sample softmax already from Codebook
+        # B = probs.shape[0]
+        # p = probs.reshape(B, self.Codebook.Channels, self.Codebook.Classes)
+        # eps = 1e-8
+
+        # # 1) Coverage: average over batch should be uniform per channel
+        # avg_probs = p.mean(dim=0)                                  # [Ch, Cl]
+        # uniform   = torch.full_like(avg_probs, 1.0 / self.Codebook.Classes)
+        # # KL(avg || uniform) == log(K) - H(avg). Minimizing == maximizing H(avg).
+        # coverage_loss = (avg_probs * (avg_probs.add(eps).log() -
+        #                             uniform.log())).sum(-1).mean()
+
+        # # 2) Sharpness: each sample should commit to one class per channel
+        # sample_entropy = -(p * p.add(eps).log()).sum(-1).mean()  # mean over B, Ch
+
+
+
         pred = self.decode(codes)
         result = {
             "Z": logits,
+            "P": probs,
             "C": codes,
             "Y": self.FeatureStatistics.Denormalize(pred),
         }
         loss = {
             "Reconstruction Loss": Losses.MSE(pred, features),
+            # "Coverage Loss":  0.1  * coverage_loss,
+            # "Sharpness Loss": 0.01 * sample_entropy,
         }
         return result, loss
 

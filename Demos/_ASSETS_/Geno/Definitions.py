@@ -1,4 +1,5 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
+# RootName = "body_world"
 HipName = "Hips"
 NeckName = "Neck"
 HeadName = "Head"
@@ -50,5 +51,7 @@ FULL_BODY_NAMES = [
     RightScapName,
     RightShoulderName,
     RightElbowName,
-    RightWristName
+    RightWristName,
 ]
+
+THREE_POINT_NAMES = [HeadName, LeftWristName, RightWristName]

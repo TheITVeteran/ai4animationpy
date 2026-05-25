@@ -17,9 +17,7 @@ class Program:
         self.Path = path
 
     def Start(self):
-        glb_motion = Motion.LoadFromGLB(
-            self.Path, names=Definitions.FULL_BODY_NAMES, floor=None
-        )
+        glb_motion = Motion.LoadFromGLB(self.Path, names=Definitions.FULL_BODY_NAMES)
         # glb_motion.SaveToNPZ(glb_motion.Name)
         # npz_motion = Motion.LoadFromNPZ(glb_motion.Name)
         self.Motion = glb_motion

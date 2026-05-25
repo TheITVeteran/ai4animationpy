@@ -38,18 +38,6 @@ class MotionEditor(Component):
             print("Dataset has no files")
 
     def Update(self):
-        # if AI4Animation.Standalone is None:
-        #     if not self.IsPlaying():
-        #         return
-        # else:
-        #     if (
-        #         not self.IsPlaying()
-        #         and not self.Slider_Assets.Modified
-        #         and not self.Slider_Timeline.Modified
-        #         and not self.Slider_Scale.Modified
-        #         and not self.Button_Mirror.IsPressed()
-        #     ):
-        #         return
         self.LoadFrame(self.Timestamp)
 
     def IsSetup(self):
@@ -204,11 +192,6 @@ class MotionEditor(Component):
             self.Slider_Timeline.SetValue(self.Timestamp / self.Motion.TotalTime)
 
         self.Motion.Scale = self.Slider_Scale.GUI(self.Motion.Scale)
-        # if self.Slider_Scale.Modified:
-        #     self.Motion.Scale = self.Slider_Scale.GetValue()
-        # else:
-        #     self.Slider_Scale.SetValue(self.Motion.Scale)
-        # self.Slider_Scale.Label = str(round(self.Motion.Scale, 3))
 
         AI4Animation.Draw.Text(
             f"{self.Motion.GetFrameIndices(self.Timestamp)[0] + 1}/{self.Motion.NumFrames}",
@@ -250,9 +233,6 @@ class MotionEditor(Component):
 
         for module in self.Motion.Modules:
             module.GUI(self)
-
-        # if not self.IsPlaying():
-        #     self.Actor.DrawHandle()
 
     def Draw(self):
         for module in self.Motion.Modules:

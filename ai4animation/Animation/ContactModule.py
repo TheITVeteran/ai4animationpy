@@ -1,5 +1,5 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
-"""Module for computing bone-ground contact labels based on height and velocity thresholds."""
+"""Module for computing bone contact labels based on velocity thresholds."""
 
 from ai4animation import Utility
 from ai4animation.AI4Animation import AI4Animation
@@ -14,15 +14,18 @@ class ContactModule(Module):
         self, motion: Motion, configs, proportional=False
     ) -> (
         None
-    ):  # Each config is a tuple of (boneName, heightThreshold, velocityThreshold)
+    ):  # Each config is a tuple of (boneName, velocityThreshold)
         super().__init__(motion)
 
         self.Configs = configs
         self.BoneNames = [config[0] for config in configs]
         self.BoneIndices = self.Motion.GetBoneIndices(self.BoneNames)
-        self.HeightThresholds = [config[1] for config in configs]
-        self.VelocityThresholds = [config[2] for config in configs]
+        self.VelocityThresholds = [config[1] for config in configs]
         self.Proportional = proportional
+
+        for config in configs:
+            if len(config) != 2:
+                print("ContactModule config length did not have expected tuple size of 2 for (boneName, velocityThreshold)")
 
     def Initialize(self):
         pass
@@ -30,8 +33,23 @@ class ContactModule(Module):
     def GetName(self):
         return "Contact"
 
+    def ComputeSeries(
+        self,
+        timestamp: float,
+        mirrored: bool,
+        timeseries: TimeSeries,
+    ):
+        timestamps = timeseries.SimulateTimestamps(timestamp)
+        instance = self.Series(
+            timeseries,
+            self.BoneNames,
+            self.GetContacts(timestamps, mirrored),
+        )
+        return instance
+
     def GUI(self, editor):
-        pass
+        if Module.Visualize[ContactModule]:
+            self.ComputeSeries(editor.Timestamp, editor.Mirror, editor.TimeSeries).GUI(0.3, 0.9, 0.4, 0.05)
 
     def Draw(self, editor):
         if Module.Visualize[ContactModule]:
@@ -40,16 +58,10 @@ class ContactModule(Module):
                 timestamps, self.BoneIndices, editor.Mirror
             ).reshape(-1, 3)
             contacts = self.GetContacts(timestamps, editor.Mirror).reshape(-1, 1)
-            grounded = self.GetGrounded(timestamps, editor.Mirror).reshape(-1, 1)
             for i in range(contacts.shape[0]):
                 if contacts[i]:
-                    color = (
-                        AI4Animation.Color.RED
-                        if grounded[i]
-                        else AI4Animation.Color.GREEN
-                    )
                     AI4Animation.Draw.Sphere(
-                        positions[i], size=0.04, color=Utility.Opacity(color, 0.5)
+                        positions[i], size=0.04, color=Utility.Opacity(AI4Animation.Color.GREEN, 0.5)
                     )
                 else:
                     AI4Animation.Draw.Sphere(
@@ -70,21 +82,8 @@ class ContactModule(Module):
             scales = Tensor.Sum(lengths, axis=-2, keepDim=False)
         else:
             scales = 1
-        vavlues = velocities < (self.VelocityThresholds * scales)
-        return vavlues
+        return velocities < (self.VelocityThresholds * scales)
 
-    def GetGrounded(self, timestamps, mirrored):
-        positions = self.Motion.GetBonePositions(timestamps, self.BoneIndices, mirrored)
-        heights = positions[..., 1]
-        if self.Proportional:
-            lengths = self.Motion.GetBoneLengths(
-                timestamps=timestamps, mirrored=mirrored
-            )
-            scales = Tensor.Sum(lengths, axis=-2, keepDim=False)
-        else:
-            scales = 1
-        values = heights < (self.HeightThresholds * scales)
-        return values
 
     class Series(TimeSeries):
         def __init__(self, timeSeries, names, values=None):
@@ -96,7 +95,7 @@ class ContactModule(Module):
                 else values
             )
 
-        def GUI(self, x, y, width, height):
+        def GUI(self, x=0.3, y=0.94, width=0.4, height=0.05):
             AI4Animation.GUI.BarPlot(
                 x,
                 y,
@@ -104,7 +103,7 @@ class ContactModule(Module):
                 height,
                 Tensor.SwapAxes(self.Values, 0, 1),
                 label="Contacts",
-                colors=AI4Animation.Color.GetRainbowColors(len(self.Names)),
+                colors=[AI4Animation.Color.GREEN],
             )
 
         def Draw(self):

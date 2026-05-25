@@ -44,10 +44,10 @@ class Program:
                     lambda x: ContactModule(
                         x,
                         [
-                            (Definitions.LeftAnkleName, 0.1, 0.25),
-                            (Definitions.LeftBallName, 0.05, 0.25),
-                            (Definitions.RightAnkleName, 0.1, 0.25),
-                            (Definitions.RightBallName, 0.05, 0.25),
+                            (Definitions.LeftAnkleName, 0.25),
+                            (Definitions.LeftBallName, 0.25),
+                            (Definitions.RightAnkleName, 0.25),
+                            (Definitions.RightBallName, 0.25),
                         ],
                     ),
                     lambda x: GuidanceModule(x),

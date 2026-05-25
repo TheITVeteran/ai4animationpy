@@ -655,7 +655,7 @@ class FBX(ModelImporter):
                 return pivot
         return None
 
-    def LoadMotion(self, names=None, floor=None):
+    def LoadMotion(self, names=None, operation=None):
         assert self._animation is not None, f"No animation in {self._path}"
         anim = self._animation
 
@@ -674,19 +674,12 @@ class FBX(ModelImporter):
             ]
             frames = anim.GlobalTransformations[:, indices]
 
-        if floor is not None:
-            floor_node = next((x for x in self._nodes if x.Name == floor), None)
-            if floor_node is None:
-                print(f"Floor '{floor}' not found. Available: {self._nodeNames}")
-            else:
-                offset = anim.GlobalTransformations[:, floor_node.Index]
-                frames = Transform.TransformationTo(frames, offset.reshape(-1, 1, 4, 4))
-
         return Motion(
             name=self.Filename,
             hierarchy=hierarchy,
             frames=frames,
             framerate=anim.Framerate,
+            operation=operation,
         )
 
     def Debug(self):

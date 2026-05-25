@@ -19,13 +19,15 @@ class DataSampler:
         function,
         start_padding=0.0,
         end_padding=0.0,
+        coverage=1.0,
     ):
         self.Dataset = dataset
         self.Framerate = framerate
-        self.StartPadding = start_padding
-        self.EndPadding = end_padding
         self.BatchSize = batch_size
         self.Function = function
+        self.StartPadding = start_padding
+        self.EndPadding = end_padding
+        self.Coverage = coverage
 
         self.NumWorkers = Utility.GetNumWorkers()
         print(
@@ -62,13 +64,14 @@ class DataSampler:
         ]
 
         self.Samples = sum([len(t) for t in self.Timestamps])
+        print(f"Per-Epoch Coverage: {self.Coverage}")
         print(f"Training Samples: {self.TrainingSamples} / {self.Samples}")
         print(f"Training Batches: {self.BatchCount} @ {self.BatchSize}")
         print(f"Motion Duration: {self.Duration(self.TrainingSamples)}")
 
     @property
     def BatchCount(self):
-        return self.Samples // self.BatchSize
+        return int(self.Coverage * self.Samples // self.BatchSize)
 
     @property
     def TrainingSamples(self):

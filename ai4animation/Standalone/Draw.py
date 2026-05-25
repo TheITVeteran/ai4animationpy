@@ -17,7 +17,7 @@ def ScreenHeight():
 def Cube(position, size=0.1, color=BLACK):
     if position.shape[0] == 0:
         return
-    position_list = position.tolist()
+    position_list = position.reshape(-1, 3).tolist()
     for pos in position_list:
         rl.DrawCube(pos, size, size, size, color)
 

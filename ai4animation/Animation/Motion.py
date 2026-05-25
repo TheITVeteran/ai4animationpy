@@ -8,11 +8,14 @@ from ai4animation.Math import Quaternion, Tensor, Transform, Vector3
 
 
 class Motion:
-    def __init__(self, name, hierarchy, frames, framerate):
+    def __init__(self, name, hierarchy, frames, framerate, operation=None):
         self.Name = name
         self.Hierarchy = hierarchy
         self.Frames = frames  # [num_frames, num_joints, 4, 4]
         self.Framerate = framerate
+
+        if operation is not None:
+            operation(self)
 
         if self.NumJoints != len(hierarchy.BoneNames):
             print(
@@ -196,6 +199,18 @@ class Motion:
         bone_lengths = Vector3.Distance(bone_positions, parent_positions)
         return bone_lengths
 
+    def GetBodyProportion(
+        self,
+        timestamps=None,
+        bone_names_or_indices=None,
+        parent_names_or_indices=None,
+        mirrored=False,
+    ):
+        lengths = self.GetBoneLengths(timestamps, bone_names_or_indices, parent_names_or_indices, mirrored)
+        lengths = Tensor.Squeeze(lengths, -1)
+        proportion = Tensor.Sum(lengths, axis=-1, keepDim=True)
+        return proportion
+
     def Debug(self):
         print(f"=== Motion: {self.Name} ===")
         print(f"Frames: {self.NumFrames}")
@@ -254,7 +269,7 @@ class Motion:
         )
 
     @classmethod
-    def LoadFromNPZ(cls, absolute_path):
+    def LoadFromNPZ(cls, absolute_path, operation=None):
         if not absolute_path.endswith(".npz"):
             absolute_path = absolute_path + ".npz"
         if not os.path.isfile(absolute_path):
@@ -278,44 +293,50 @@ class Motion:
                 hierarchy=hierarchy,
                 frames=frames,
                 framerate=float(data["framerate"]),
+                operation=operation,
             )
 
     @classmethod
-    def LoadFromGLB(cls, absolute_path, names=None, floor=None):
+    def LoadFromGLB(
+        cls,
+        absolute_path,
+        names=None,
+        scale=1.0, # TODO: not yet supported
+        operation=None,
+    ):
         from ai4animation.Import.GLBImporter import GLB
 
         if not os.path.isfile(absolute_path):
             raise FileNotFoundError(f"GLB file not found: {absolute_path}")
-        return GLB(absolute_path).LoadMotion(names=names, floor=floor)
+        return GLB(absolute_path).LoadMotion(names=names, operation=operation)
 
     @classmethod
     def LoadFromBVH(
         cls,
         absolute_path,
-        scale=1.0,
         names=None,
-        floor=None,
-        mirror_axis: Vector3.Axis | None = None,
-        joint_corrections=None,
+        scale=1.0,
+        operation=None,
     ):
         from ai4animation.Import.BVHImporter import BVH
 
         if not os.path.isfile(absolute_path):
             raise FileNotFoundError(f"BVH file not found: {absolute_path}")
-        return BVH(
-            absolute_path,
-            scale=scale,
-            mirror_axis=mirror_axis,
-            joint_corrections=joint_corrections,
-        ).LoadMotion(names=names, floor=floor)
+        return BVH(absolute_path, scale=scale).LoadMotion(names=names, operation=operation)
 
     @classmethod
-    def LoadFromFBX(cls, absolute_path, names=None, floor=None):
+    def LoadFromFBX(
+        cls,
+        absolute_path,
+        names=None,
+        scale=1.0, # TODO: not yet supported
+        operation=None,
+    ):
         from ai4animation.Import.FBXImporter import FBX
 
         if not os.path.isfile(absolute_path):
             raise FileNotFoundError(f"FBX file not found: {absolute_path}")
-        return FBX(absolute_path).LoadMotion(names=names, floor=floor)
+        return FBX(absolute_path).LoadMotion(names=names, operation=operation)
 
 
 class Hierarchy:
@@ -334,6 +355,7 @@ class Hierarchy:
                 self.ParentIndices.append(parent_idx)
 
     def GetBoneIndex(self, names, debug=False):
+        #TODO: Fix undesired behaviour (across framework) if string is not a list but a single string
         if not isinstance(names, (list, tuple)):
             names = list(names)
 

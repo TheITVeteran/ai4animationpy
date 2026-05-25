@@ -39,4 +39,5 @@ class Color:
     SKYBLUE = rl.colors.SKYBLUE
     ORANGE = rl.colors.ORANGE
     MAGENTA = rl.colors.MAGENTA
+    YELLOW = rl.colors.YELLOW
     CYAN = GetColor(0, 1, 1, 1)

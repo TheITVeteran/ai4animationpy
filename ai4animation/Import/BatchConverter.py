@@ -33,10 +33,7 @@ class BatchConverter:
     def Run(
         self,
         bone_names,
-        floor,
-        bvh_scale=1.0,
-        bvh_mirror_axis: Vector3.Axis | None = None,
-        bvh_joint_corrections=None,
+        scale=1.0,
     ) -> List[str]:
         files = self.FindFiles()
         if not files:
@@ -55,10 +52,7 @@ class BatchConverter:
                         self.input_directory,
                         self.output_directory,
                         bone_names,
-                        floor,
-                        bvh_scale,
-                        bvh_mirror_axis,
-                        bvh_joint_corrections,
+                        scale,
                     ),
                 ): file
                 for file in files
@@ -90,27 +84,21 @@ class BatchConverter:
             input_directory,
             output_directory,
             bone_names,
-            floor,
-            bvh_scale,
-            bvh_mirror_axis,
-            bvh_joint_corrections,
+            scale,
         ) = args
         try:
             filepath = os.path.join(input_directory, filename)
             ext = os.path.splitext(filename)[1].lower()
 
             if ext == ".glb":
-                motion = Motion.LoadFromGLB(filepath, bone_names, floor)
+                motion = Motion.LoadFromGLB(filepath, bone_names)
             elif ext == ".fbx":
-                motion = Motion.LoadFromFBX(filepath, bone_names, floor)
+                motion = Motion.LoadFromFBX(filepath, bone_names)
             elif ext == ".bvh":
                 motion = Motion.LoadFromBVH(
                     filepath,
-                    scale=bvh_scale,
                     names=bone_names,
-                    floor=floor,
-                    mirror_axis=bvh_mirror_axis,
-                    joint_corrections=bvh_joint_corrections,
+                    scale=scale,
                 )
             else:
                 raise ValueError(f"Unsupported file format: {ext}")
@@ -128,6 +116,7 @@ class BatchConverter:
             )
             return (filename, output_path, True, None)
         except Exception as e:
+            print(f"Error processing {filename}: {e}")
             return (filename, None, False, str(e))
 
     def FindFiles(self) -> List[str]:
@@ -161,20 +150,14 @@ def Run(
     input_dir: str,
     output_dir: str = None,
     bone_names=None,
-    floor=None,
-    bvh_scale=1.0,
-    bvh_mirror_axis: Vector3.Axis | None = None,
-    bvh_joint_corrections=None,
+    scale=1.0,
 ) -> List[str]:
     converter = BatchConverter(
         input_dir, output_dir, max_workers=Utility.GetNumWorkers()
     )
     return converter.Run(
         bone_names,
-        floor,
-        bvh_scale=bvh_scale,
-        bvh_mirror_axis=bvh_mirror_axis,
-        bvh_joint_corrections=bvh_joint_corrections,
+        scale=scale,
     )
 
 
@@ -186,15 +169,20 @@ def main():
         prog="convert",
     )
     parser.add_argument(
-        "--input_dir",
-        required=True,
+        "input_dir",
         help="Input directory containing GLB/FBX/BVH files",
     )
     parser.add_argument(
         "--output_dir", help="Output directory for NPZ files (default: input_dir/NPZ)"
     )
     parser.add_argument(
-        "--definitions", help="Absolute path to a definitions file for specifying bone names"
+        "--definitions",
+        nargs=2,
+        metavar=("PATH", "VARIABLE"),
+        help="Absolute path to a definitions file and the variable name within it to use for bone names",
+    )
+    parser.add_argument(
+        "--scale", help="Scale factor for files to convert betweem m/cm units etc. (default: 1.0 for m)", type=float
     )
 
     args = parser.parse_args()
@@ -204,25 +192,21 @@ def main():
         args.output_dir if args.output_dir else os.path.join(args.input_dir, "NPZ")
     )
 
-    # preset settings
+    # bone names
     bone_names = None
     if args.definitions is not None:
-        module = Utility.LoadModule(args.definitions)
-        bone_names = module.FULL_BODY_NAMES
+        definitions_path, definitions_var = args.definitions
+        module = Utility.LoadModule(definitions_path)
+        bone_names = getattr(module, definitions_var)
 
-    floor = None
-    bvh_scale = 0.01
-    bvh_mirror_axis = None
-    bvh_joint_corrections = None
+    # data unit scale
+    scale = args.scale
 
     Run(
         args.input_dir,
         output_dir,
         bone_names=bone_names,
-        floor=floor,
-        bvh_scale=bvh_scale,
-        bvh_mirror_axis=bvh_mirror_axis,
-        bvh_joint_corrections=bvh_joint_corrections,
+        scale=scale,
     )
     return 0
 

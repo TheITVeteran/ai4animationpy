@@ -517,9 +517,10 @@ def Gaussian(values, power=1.0, axis=-1, keepDim=True):
 
     values = SwapAxes(values, axis, -1)
 
+    idx = Arange(0, values.shape[-1], 1).astype(np.float32)
     padding = (values.shape[-1] - 1) / 2.0
-    idx = Arange(0, values.shape[-1], 1)
     weight = Ones(values.shape) * Exp(-((idx - padding) ** 2) / (0.5 * padding) ** 2)
+
 
     weight = SwapAxes(weight, axis, -1)
     values = SwapAxes(values, axis, -1)

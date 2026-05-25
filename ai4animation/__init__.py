@@ -14,6 +14,7 @@ from .AI.Models import (
     Autoencoder,
     CategoricalEncoderDecoder,
     CodebookMatching,
+    SequentialMLP,
     CxM,
     MultiLayerPerceptron,
 )

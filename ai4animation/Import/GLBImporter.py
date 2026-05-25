@@ -574,7 +574,7 @@ class GLB(ModelImporter):
                 break
         return parent
 
-    def LoadMotion(self, names=None, floor=None):
+    def LoadMotion(self, names=None, operation=None):
         anim = self._animations[0]
         if names is None:
             hierarchy = Hierarchy(self._nodeNames, self._nodeParentNames)
@@ -593,22 +593,12 @@ class GLB(ModelImporter):
             ]
             frames = anim.GlobalTransformations[:, indices]
 
-        if floor is not None:
-            floor_node = next((x for x in self._nodes if x.Name == floor), None)
-            if floor_node is None:
-                print(
-                    f"Floor node '{floor}' not found in GLB file. Available nodes: {self._nodeNames}"
-                )
-            else:
-                index = floor_node.Index
-                offset = anim.GlobalTransformations[:, index]
-                frames = Transform.TransformationTo(frames, offset.reshape(-1, 1, 4, 4))
-
         return Motion(
             name=self.Filename,
             hierarchy=hierarchy,
             frames=frames,
             framerate=anim.Framerate,
+            operation=operation,
         )
 
     def Debug(self):

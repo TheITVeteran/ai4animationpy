@@ -7,9 +7,10 @@ from ai4animation.Animation.Motion import Motion
 
 
 class Dataset:
-    def __init__(self, directory, modules=None, max_files=None):
+    def __init__(self, directory, modules=None, operation=None, max_files=None):
         self.Directory = directory if isinstance(directory, list) else [directory]
         self.Modules = modules
+        self.Operation = operation
         self.Pool = []
         # Find all NPZ files in the directory and subdirectories
         for dir in self.Directory:
@@ -31,7 +32,7 @@ class Dataset:
             return None
 
     def LoadMotion(self, index):
-        motion = Motion.LoadFromNPZ(self.Files[index])
+        motion = Motion.LoadFromNPZ(self.Files[index], operation=self.Operation)
         if self.Modules is not None:
             motion.AddModules(self.Modules)
         return motion

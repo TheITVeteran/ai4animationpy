@@ -1,17 +1,25 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
+from enum import Enum
+
 from ai4animation.AI4Animation import AI4Animation
 from ai4animation.Animation.Module import Module
 from ai4animation.Animation.Motion import Motion
 from ai4animation.Math import Rotation, Tensor, Transform, Vector3
 
+# Correction
 
 class MirrorModule(Module):
+    class Map(Enum):
+        Symmetric = "symmetry"
+        All = "all"
+
     def __init__(
         self,
         motion: Motion,
         axis,  # Vector3
-        correction,  # Vector3
-        overrides=None,  # Dictionary Name -> Vector3
+        correction=Vector3.Create(0,0,0),  # Vector3 for correcting local joint rotation
+        map=Map.Symmetric, # Map for applying the correction across joints
+        overrides={},  # Dictionary {Name -> Vector3} to override correction values for specific joints
     ) -> None:
         super().__init__(motion)
 
@@ -19,21 +27,19 @@ class MirrorModule(Module):
 
         self.Symmetry = self.DetectSymmetry(self.Motion.Hierarchy.BoneNames)
 
-        self.Correction = Rotation.Euler(Vector3.Zero(len(motion.Hierarchy.BoneNames)))
+        self.Correctives = Rotation.Euler(Vector3.Zero(len(motion.Hierarchy.BoneNames)))
+
         for i, sym_idx in enumerate(self.Symmetry):
-            self.Correction[i : i + 1] = (
-                Rotation.Euler(correction) if sym_idx != i else Rotation.Euler(0, 0, 0)
-            )
+            if map is MirrorModule.Map.Symmetric:
+                if i != sym_idx:
+                    self.Correctives[i] = Rotation.Euler(correction)
+            if map is MirrorModule.Map.All:
+                self.Correctives[i] = Rotation.Euler(correction)
 
-        if overrides is not None:
-            for k, v in overrides.items():
-                self.Correction[self.Motion.Hierarchy.GetBoneIndex([k])] = (
-                    Rotation.Euler(v)
+        for k, v in overrides.items():
+            self.Correctives[self.Motion.Hierarchy.GetBoneIndex([k])] = (
+                Rotation.Euler(v)
                 )
-
-        # self.NeedsCorrection: bool = not Tensor.All(
-        #     self.Correction == Rotation.Euler(0, 0, 0)
-        # )
 
     def Initialize(self):
         pass
@@ -45,9 +51,8 @@ class MirrorModule(Module):
         bone_indices = [self.Symmetry[x] for x in bone_indices]
         transforms = self.Motion.Frames[frame_indices][:, bone_indices]
         transforms = Transform.GetMirror(transforms, self.MirrorAxis)
-        # if self.NeedsCorrection:
         local_update = Transform.R(
-            self.Correction[bone_indices],
+            self.Correctives[bone_indices],
         ).reshape(1, len(bone_indices), 4, 4)
         transforms = Transform.Multiply(transforms, local_update)
         return transforms
@@ -121,5 +126,5 @@ class MirrorModule(Module):
                     if mirror in name_to_idx:
                         symmetry[bone_idx] = name_to_idx[mirror]
                         return True
-
+        # print("Could not find symmetry for bone: " + boneName)
         return False

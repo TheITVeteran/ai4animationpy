@@ -25,45 +25,14 @@ def _euler_to_rotation_matrix(angles, order):
     return Tensor.MatMul(r0, Tensor.MatMul(r1, r2))
 
 
-def _resolve_joint_corrections(joint_names, joint_corrections):
-    corrections = Vector3.Zero(len(joint_names))
-    if joint_corrections is None:
-        return corrections
-
-    if isinstance(joint_corrections, dict):
-        name_to_index = {name: i for i, name in enumerate(joint_names)}
-        for joint_name, correction in joint_corrections.items():
-            joint_idx = name_to_index.get(joint_name)
-            if joint_idx is None:
-                raise ValueError(
-                    f"Joint correction specified for unknown BVH joint '{joint_name}'."
-                )
-            corrections[joint_idx] = Vector3.Create(correction)
-        return corrections
-
-    joint_corrections = Tensor.Create(joint_corrections)
-    if joint_corrections.shape != corrections.shape:
-        raise ValueError(
-            f"joint_corrections must have shape {corrections.shape}, got {joint_corrections.shape}."
-        )
-    return joint_corrections
-
-
 class BVH:
     def __init__(
         self,
         path,
         scale=1.0,
-        mirror_axis: Vector3.Axis | None = None,
-        joint_corrections=None,
     ):
         self._path = path
         self._scale = scale
-        if mirror_axis is not None and not isinstance(mirror_axis, Vector3.Axis):
-            raise TypeError(
-                "mirror_axis must be a Vector3.Axis value, e.g. Vector3.Axis.XPositive."
-            )
-        self._mirror_axis = mirror_axis
 
         if not os.path.isfile(path):
             raise FileNotFoundError(f"BVH file not found: {path}")
@@ -91,9 +60,6 @@ class BVH:
         self._order = order
         self._framerate = 1.0 / framerate
         self._channels = channel_counts
-        self._joint_corrections = _resolve_joint_corrections(
-            self._names, joint_corrections
-        )
 
     @staticmethod
     def _parse_hierarchy(lines, path):
@@ -258,7 +224,7 @@ class BVH:
             parent_idx = self._parents[parent_idx]
         return None
 
-    def LoadMotion(self, names=None, floor=None) -> Motion:
+    def LoadMotion(self, names=None, operation=None):
         num_frames = self._rotations.shape[0]
         num_joints = self._rotations.shape[1]
 
@@ -266,9 +232,6 @@ class BVH:
         local_positions = Tensor.Create(self._positions)
         local_positions = self._scale * local_positions
         local_matrices = Transform.TR(local_positions, rotation_matrices)
-
-        if self._mirror_axis is not None:
-            local_matrices = Transform.GetMirror(local_matrices, self._mirror_axis)
 
         global_matrices = np.zeros((num_frames, num_joints, 4, 4), dtype=np.float32)
         for joint_idx in range(num_joints):
@@ -279,12 +242,6 @@ class BVH:
                 global_matrices[:, joint_idx] = Transform.Multiply(
                     global_matrices[:, parent_idx], local_matrices[:, joint_idx]
                 )
-
-        if not Tensor.All(self._joint_corrections == 0.0):
-            correction_update = Transform.TR(
-                Vector3.Zero(num_joints), Rotation.Euler(self._joint_corrections)
-            ).reshape(1, num_joints, 4, 4)
-            global_matrices = Transform.Multiply(global_matrices, correction_update)
 
         if names is None:
             names = [
@@ -299,19 +256,10 @@ class BVH:
         indices = [name_to_index[name] for name in names if name in name_to_index]
         frames = global_matrices[:, indices]
 
-        if floor is not None:
-            if floor not in self._names:
-                print(
-                    f"Floor node '{floor}' not found in BVH file. Available nodes: {self._names}"
-                )
-            else:
-                floor_idx = self._names.index(floor)
-                offset = global_matrices[:, floor_idx]
-                frames = Transform.TransformationTo(frames, offset.reshape(-1, 1, 4, 4))
-
         return Motion(
             name=self.Filename,
             hierarchy=hierarchy,
             frames=frames,
             framerate=self._framerate,
+            operation=operation,
         )

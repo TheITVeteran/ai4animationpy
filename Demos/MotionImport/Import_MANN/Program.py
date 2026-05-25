@@ -7,7 +7,6 @@ from ai4animation import (
     AI4Animation,
     ContactModule,
     Dataset,
-    GuidanceModule,
     MirrorModule,
     MotionEditor,
     MotionModule,
@@ -18,17 +17,19 @@ from ai4animation import (
 )
 
 SCRIPT_DIR = Path(__file__).parent
-ASSETS_PATH = str(SCRIPT_DIR.parent.parent / "_ASSETS_/Quadruped")
 
+DATASET_PATH = os.path.join(SCRIPT_DIR, "bvh/NPZ")
+
+ASSETS_PATH = str(SCRIPT_DIR.parent.parent / "_ASSETS_/Quadruped")
+MODEL_PATH = os.path.join(ASSETS_PATH, "Dog.glb")
 sys.path.append(ASSETS_PATH)
 import Definitions
 
 
 class Program:
     def Start(self):
-        editor = AI4Animation.Scene.AddEntity("MotionEditor")
-        self.dataset = Dataset(
-            os.path.join(ASSETS_PATH, "Motions"),
+        self.Dataset = Dataset(
+            DATASET_PATH,
             [
                 lambda x: RootModule(
                     x,
@@ -50,22 +51,19 @@ class Program:
                         (Definitions.RightFootSiteName, 1.0),
                     ],
                 ),
-                lambda x: GuidanceModule(x),
                 lambda x: MirrorModule(
                     x, Vector3.Axis.ZPositive,
                 ),
             ],
             operation=lambda x: self.CorrectMotion(x),
         )
-
-        editor.AddComponent(
+        self.Editor = AI4Animation.Scene.AddEntity("MotionEditor").AddComponent(
             MotionEditor,
-            self.dataset,
-            os.path.join(ASSETS_PATH, "Dog.glb"),
+            self.Dataset,
+            MODEL_PATH,
             Definitions.FULL_BODY_NAMES,
         )
-
-        AI4Animation.Standalone.Camera.SetTarget(editor)
+        AI4Animation.Standalone.Camera.SetTarget(self.Editor.Actor.Entity)
 
     def Update(self):
         pass

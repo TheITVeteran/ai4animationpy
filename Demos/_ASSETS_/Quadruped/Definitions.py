@@ -60,5 +60,5 @@ FULL_BODY_NAMES = [
     RightFootSiteName,
     TailName,
     Tail1Name,
-    Tail1SiteName
+    Tail1SiteName,
 ]

@@ -10,7 +10,7 @@ from ai4animation.Components.Component import Component
 from ai4animation.Math import Quaternion, Rotation, Tensor, Transform, Vector3
 
 
-class Actor(Component):
+class Actor(Component): #Rewrite this to get a hierarchy as input and make the model optional
     def Start(self, params):
         model_path = params[0]
         bone_names = params[1] if len(params) > 1 else None
@@ -33,11 +33,11 @@ class Actor(Component):
         if bone_names is None:
             bone_names = self.Model.JointNames
 
-        # Save input params
+        # Save Params
         self.ModelPath = model_path
         self.BoneNames = bone_names
 
-        # Create missing nodes on the fly
+        # Create Bones
         self.Bones = []
         self.NameToBoneMap = {}
         for i, name in enumerate(bone_names):
@@ -283,6 +283,12 @@ class Actor(Component):
 
     def GetCurrentBoneLengths(self, bones=None):
         return Tensor.Create([bone.GetCurrentLength() for bone in self.GetBones(bones)])
+
+    def GetDefaultBodyProportion(self, bones=None):
+        return Tensor.Sum(self.GetDefaultBoneLengths(bones))
+
+    def GetCurrentBodyProportion(self, bones=None):
+        return Tensor.Sum(self.GetCurrentBoneLengths(bones))
 
     def RestoreBoneLengths(self, bones=None):
         bones = self.GetBones(bones)
