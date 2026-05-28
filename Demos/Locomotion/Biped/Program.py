@@ -26,7 +26,6 @@ from ai4animation import (
     Time,
     TimeSeries,
     Transform,
-    Utility,
     Vector3,
 )
 from LegIK import LegIK
@@ -41,11 +40,8 @@ SEQUENCE_LENGTH = 16
 SEQUENCE_FPS = 30
 PREDICTION_FPS = 10
 CONTACT_POWER = 3.0
-CONTACT_THRESHOLD = 2.0 / 3.0
 
 # The locomotion system was trained on the Style100 dataset.
-
-
 class Program:
     def Start(self):
         self.Actor = AI4Animation.Scene.AddEntity("Actor").AddComponent(
@@ -56,10 +52,15 @@ class Program:
         )
         AI4Animation.Standalone.Camera.SetTarget(self.Actor.Entity)
 
-        local_path = os.path.join(SCRIPT_DIR, "Network.pt")
-        self.Model = torch.load(local_path, weights_only=False)
-
+        self.Model = torch.load(
+            os.path.join(SCRIPT_DIR, "Network.pt"), weights_only=False
+        )
         self.Model.eval()
+
+        self.PostProcessor = torch.load(
+            os.path.join(SCRIPT_DIR, "PostProcessor.pt"), weights_only=False
+        )
+        self.PostProcessor.eval()
 
         self.SolverIterations = 1
         self.SolverAccuracy = 1e-3
@@ -70,7 +71,6 @@ class Program:
         self.Timescale = 1.0
 
         self.TrajectoryCorrection = 0.25
-        self.GuidanceCorrection = 0.0
 
         self.ControlSeries = TimeSeries(0.0, SEQUENCE_WINDOW, SEQUENCE_LENGTH)
         self.SimulationObject = RootModule.Series(self.ControlSeries)
@@ -250,15 +250,9 @@ class Program:
                 self.Sequence.Trajectory.Velocities,
                 self.TrajectoryCorrection,
             )
-            # Guidance
-            self.GuidanceControl.Positions = Vector3.Lerp(
-                self.GuidanceControl.Positions,
-                self.Sequence.SampleGuidance(0.0),
-                self.GuidanceCorrection,
-            )
 
     def Predict(self):
-        inputs = FeedTensor("X", self.Model.InputDim)
+        inputs = FeedTensor("X", self.Model.input_dim())
 
         root = self.Actor.Root
 
@@ -284,16 +278,8 @@ class Program:
 
         inputs.Feed(self.GuidanceControl.Positions)
 
-        noise = 0.0
-        outputs, _, _, _ = self.Model(
-            inputs.GetTensor().reshape(1, -1),
-            noise=(
-                0.5
-                - noise / 2.0
-                + noise * Tensor.ToDevice(torch.rand(1, self.Model.LatentDim))
-            ),
-            iterations=self.NetworkIterations,
-            seed=Tensor.ToDevice(torch.zeros(1, self.Model.LatentDim)),
+        outputs = self.Model(
+            inputs.GetTensor().reshape(1, -1), iterations=self.NetworkIterations
         )
         outputs = outputs.reshape(SEQUENCE_LENGTH, -1)
         outputs = ReadTensor("Y", Tensor.ToNumPy(outputs))
@@ -326,13 +312,6 @@ class Program:
             futureRootTransforms.reshape(SEQUENCE_LENGTH, 1, 4, 4),
         )
 
-        raw_contacts = outputs.Read(4)
-        futureContacts = Utility.SmoothStep(
-            raw_contacts, CONTACT_THRESHOLD, CONTACT_POWER
-        )
-
-        futureGuidances = outputs.ReadVector3(self.Actor.GetBoneCount())
-
         self.Previous = self.Sequence
         self.Sequence = Sequence()
         self.Previous = self.Sequence if self.Previous is None else self.Previous
@@ -348,8 +327,44 @@ class Program:
             futureMotionTransforms,
             futureMotionVelocities,
         )
-        self.Sequence.Contacts = futureContacts
-        self.Sequence.Guidances = futureGuidances
+
+        # Predict Contacts
+        inputs = FeedTensor("X", self.PostProcessor.input_dim())
+
+        currentTransforms = self.Actor.GetTransforms(self.ContactIndices)
+        currentVelocities = self.Actor.GetVelocities(self.ContactIndices)
+        targetTransforms = self.Sequence.Motion.GetTransforms(self.ContactBones)[
+            1:, :, :
+        ]
+        targetVelocities = self.Sequence.Motion.GetVelocities(self.ContactBones)[
+            1:, :, :
+        ]
+        delta_distances = Vector3.Distance(
+            Transform.GetPosition(currentTransforms),
+            Transform.GetPosition(targetTransforms),
+        )
+        delta_angles = Rotation.Angle(
+            Transform.GetRotation(currentTransforms),
+            Transform.GetRotation(targetTransforms),
+        )
+        delta_velocities = Vector3.Distance(currentVelocities, targetVelocities)
+
+        inputs.Feed(Transform.GetPosition(transforms))
+        inputs.Feed(Transform.GetAxisZ(transforms))
+        inputs.Feed(Transform.GetAxisY(transforms))
+        inputs.Feed(velocities)
+        inputs.Feed(delta_distances)
+        inputs.Feed(delta_angles)
+        inputs.Feed(delta_velocities)
+
+        contacts = Tensor.ToNumPy(
+            self.PostProcessor(inputs.GetTensor()).reshape(
+                SEQUENCE_LENGTH, len(self.ContactBones)
+            )
+        )
+        self.Sequence.Contacts = Tensor.Pow(
+            Tensor.Clamp(contacts, 0, 1), CONTACT_POWER
+        )
 
     def Animate(self):
         dt = Time.DeltaTime
