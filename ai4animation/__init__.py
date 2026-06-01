@@ -30,7 +30,8 @@ from .Animation.MirrorModule import MirrorModule
 from .Animation.Module import Module
 
 # Animation classes
-from .Animation.Motion import Hierarchy, Motion
+from .Animation.Hierarchy import Hierarchy
+from .Animation.Motion import Motion
 from .Animation.MotionModule import MotionModule
 from .Animation.PID import PID
 from .Animation.RootModule import RootModule

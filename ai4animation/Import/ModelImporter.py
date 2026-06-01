@@ -4,7 +4,6 @@ from typing import List, Optional
 
 import numpy as np
 
-
 class Skin:
     def __init__(self, inverse_bind_mats=None, joints=None, bind_pose_matrices=None):
         """Initialize skin data.

@@ -15,6 +15,7 @@ from ai4animation import (
     Transform,
     Vector3,
     Rotation,
+    Motion
 )
 
 SCRIPT_DIR = Path(__file__).parent
@@ -22,7 +23,6 @@ ASSETS_PATH = str(SCRIPT_DIR.parent.parent / "_ASSETS_/Quadruped")
 
 sys.path.append(ASSETS_PATH)
 import Definitions
-
 
 class Program:
     def Start(self):
@@ -61,7 +61,7 @@ class Program:
         editor.AddComponent(
             MotionEditor,
             self.dataset,
-            os.path.join(ASSETS_PATH, "Dog.glb"),
+            Motion.LoadFromNPZ(os.path.join(ASSETS_PATH, "Motions", "D1_008_KAN01_001")).Hierarchy,
             Definitions.FULL_BODY_NAMES,
         )
 

@@ -6,61 +6,59 @@ from typing import List
 import numpy as np
 from ai4animation import Utility
 from ai4animation.AI4Animation import AI4Animation
+from ai4animation.Animation.Hierarchy import Hierarchy
 from ai4animation.Components.Component import Component
 from ai4animation.Math import Quaternion, Rotation, Tensor, Transform, Vector3
 
 
-class Actor(Component): #Rewrite this to get a hierarchy as input and make the model optional
+class Actor(Component):
     def Start(self, params):
-        model_path = params[0]
-        bone_names = params[1] if len(params) > 1 else None
-        self.ShowGUI = params[2] if len(params) > 2 else True
+        self.Hierarchy = next((p for p in params if isinstance(p, Hierarchy)), None)
+        self.ModelPath = next((p for p in params if isinstance(p, str)), None)
+        bone_names = next((p for p in params if isinstance(p, (list, tuple))), None)
 
-        if model_path.lower().endswith(".fbx"):
-            from ai4animation.Import.FBXImporter import FBX
+        if self.Hierarchy is None and self.ModelPath is None:
+            print("Error: Actor requires at least a Hierarchy or a model path.")
+            return
 
-            self.Model = FBX.Create(model_path)
+        self.Model = None
+        if self.ModelPath is not None:
+            if self.ModelPath.lower().endswith(".fbx"):
+                from ai4animation.Import.FBXImporter import FBX
+                self.Model = FBX.Create(self.ModelPath)
+            else:
+                from ai4animation.Import.GLBImporter import GLB
+                self.Model = GLB.Create(self.ModelPath)
+
+        if self.Hierarchy is not None:
+            names, parents, transforms = self.Hierarchy.BoneNames, self.Hierarchy.ParentNames, None
         else:
-            from ai4animation.Import.GLBImporter import GLB
+            names, parents, transforms = self.Model.JointNames, self.Model.JointParents, self.Model.JointMatrices
 
-            self.Model = GLB.Create(model_path)
+        self.BoneNames = list(bone_names) if bone_names is not None else names
+        self.Entities  = self.CreateEntities(names, parents, transforms)
 
-        if bone_names is None:
-            bone_names = self.Model.JointNames
+        if self.Hierarchy is not None and self.Model is not None:
+            self.AssignZeroPose(self.Model.JointNames, self.Model.JointMatrices)
 
-        self.Entities = self.CreateEntities()
-
-        if bone_names is None:
-            bone_names = self.Model.JointNames
-
-        # Save Params
-        self.ModelPath = model_path
-        self.BoneNames = bone_names
-
-        # Create Bones
+        #Create bones
         self.Bones = []
         self.NameToBoneMap = {}
-        for i, name in enumerate(bone_names):
-            entity = self.NameToEntity.get(name)
-            if entity is None:
-                entity = AI4Animation.Scene.AddEntity(
-                    name, position=None, rotation=None, parent=self.Entity
-                )
-                self.NameToEntity[name] = entity
-
+        for i, name in enumerate(self.BoneNames):
+            entity = self.NameToEntity.setdefault(
+                name,
+                AI4Animation.Scene.AddEntity(name, position=None, rotation=None, parent=self.Entity)
+            )
             bone = self.Bone(self, i, entity)
             self.Bones.append(bone)
             self.NameToBoneMap[name] = bone
 
-        # Determine Parent-Child Hierarchy
         for bone in self.Bones:
-            parent_entity = bone.Entity.FindParent(bone_names)
-            if parent_entity is not None:
-                parent_bone = self.NameToBoneMap.get(parent_entity.Name)
-                if parent_bone is not None:
-                    bone.SetParent(parent_bone)
-
-        # Initialize
+            parent_entity = bone.Entity.FindParent(self.BoneNames)
+            if parent_entity is not None and (parent_bone := self.NameToBoneMap.get(parent_entity.Name)):
+                bone.SetParent(parent_bone)
+        
+        #Initialize
         self.Root = self.Entity.GetTransform()
         self.Transforms = AI4Animation.Scene.GetTransforms(self.GetBoneEntityIndices())
         self.Velocities = Vector3.Zero(self.GetBoneCount())
@@ -71,11 +69,9 @@ class Actor(Component): #Rewrite this to get a hierarchy as input and make the m
         pass
 
     def CreateCopy(self, name=None):
-        entity = AI4Animation.Scene.AddEntity(
-            self.Entity.Name if name is None else name
-        )
-        actor = entity.AddComponent(Actor, self.ModelPath, self.BoneNames, True)
-        return actor
+        entity = AI4Animation.Scene.AddEntity(self.Entity.Name if name is None else name)
+        args = [a for a in [self.Hierarchy, self.ModelPath, self.BoneNames] if a is not None]
+        return entity.AddComponent(Actor, *args)
 
     def GetBone(self, name):
         bone = self.NameToBoneMap.get(name)
@@ -316,38 +312,6 @@ class Actor(Component): #Rewrite this to get a hierarchy as input and make the m
         for bone in bones:
             bone.RestoreAlignment()
 
-        # Filter bones with single children
-        # bone_indices = []
-        # child_indices = []
-        # single_child_bones = []
-        # for bone in bones:
-        #     if len(bone.Children) == 1:
-        #         bone_indices.append(bone.Index)
-        #         child_indices.append(bone.Children[0].Index)
-        #         single_child_bones.append(bone)
-
-        # if not single_child_bones:
-        #     return
-        # bone_Transforms = self.GetTransforms(bone_indices)
-        # child_Transforms = self.GetTransforms(child_indices)
-        # bone_positions = Transform.GetPosition(bone_Transforms)
-        # bone_rotations = Transform.GetRotation(bone_Transforms)
-        # child_positions = Transform.GetPosition(child_Transforms)
-
-        # child_zero_positions = Vector3.Zero(len(single_child_bones))
-        # for i, bone in enumerate(single_child_bones):
-        #     child_zero_positions[i] = Transform.GetPosition(bone.Children[0].ZeroTransform)
-        # zero_positions = bone_positions + Rotation.MultiplyVector(bone_rotations, child_zero_positions)
-
-        # rotations = Rotation.Multiply(
-        #         Rotation.RotationFromTo(
-        #             zero_positions - bone_positions,
-        #             child_positions - bone_positions
-        #         ),
-        #         bone_rotations
-        #     )
-        # self.SetRotations(rotations, bone_indices)
-
     def GetChain(source: "Actor.Bone", target: "Actor.Bone") -> List["Actor.Bone"]:
         chain = []
         pivot = target
@@ -378,13 +342,7 @@ class Actor(Component): #Rewrite this to get a hierarchy as input and make the m
                 AI4Animation.Scene.Transforms[ent.Index] = Transforms[idx]
             stack.extend(ent.Children)
 
-    def CreateEntities(self):
-        names, parents, transforms = (
-            self.Model.JointNames,
-            self.Model.JointParents,
-            self.Model.JointMatrices,
-        )
-
+    def CreateEntities(self, names, parents, transforms=None):
         self.NameToEntity = {
             name: AI4Animation.Scene.AddEntity(
                 name, position=None, rotation=None, parent=self.Entity
@@ -398,7 +356,9 @@ class Actor(Component): #Rewrite this to get a hierarchy as input and make the m
             if parent is not None:
                 self.NameToEntity[name].SetParent(parent)
 
-        self.AssignZeroPose(names, transforms, self.Entity)
+        if transforms is not None:
+            self.AssignZeroPose(names, transforms, self.Entity)
+
         return entities
 
     def DrawHandle(self):
@@ -409,6 +369,8 @@ class Actor(Component): #Rewrite this to get a hierarchy as input and make the m
             bone.DrawHandle()
 
     def ShowMesh(self, value):
+        if self.SkinnedMesh is None:
+            return
         if value:
             self.SkinnedMesh.Register()
         else:
@@ -416,42 +378,47 @@ class Actor(Component): #Rewrite this to get a hierarchy as input and make the m
                 self.SkinnedMesh.Unregister()
 
     def ToggleMesh(self):
+        if self.SkinnedMesh is None:
+            return
         if AI4Animation.Standalone.RenderPipeline.HasModel(self.SkinnedMesh.Models):
             self.SkinnedMesh.Unregister()
         else:
             self.SkinnedMesh.Register()
 
     def Standalone(self):
-        self.SkinnedMesh = AI4Animation.Standalone.CreateSkinnedMesh(self, self.Model)
+        self.SkinnedMesh = None
+        self.Button_Mesh = None
 
-        if not self.ShowGUI:
-            self.Canvas = None
-            self.Button_Root = None
-            self.Button_Skeleton = None
-            self.Button_Velocities = None
-            self.Button_Mesh = None
-            self.Button_Labels = None
-            self.Button_Hierarchy = None
-            return
+        if self.Model is not None:
+            self.SkinnedMesh = AI4Animation.Standalone.CreateSkinnedMesh(self, self.Model)
 
         self.Canvas = AI4Animation.GUI.Canvas("Actor", 0.01, 0.3, 0.125, 0.25)
         tuples = [
             ("Button_Root", "Show Root"),
             ("Button_Skeleton", "Show Skeleton"),
             ("Button_Velocities", "Show Velocities"),
-            ("Button_Mesh", "Show Mesh"),
+        ]
+        if self.Model is not None:
+            tuples.append(("Button_Mesh", "Show Mesh"))
+        tuples.extend([
             ("Button_Labels", "Show Labels"),
             ("Button_Hierarchy", "Show Hierarchy"),
-        ]
-        item = 0
-        for button, text in tuples:
-            setattr(self, button, AI4Animation.GUI.Button(text, 0.05, 0.15 + item/(len(tuples)+1), 0.9, 0.65/len(tuples), False, True, self.Canvas))
-            item += 1
+        ])
+
+        for i, (button, text) in enumerate(tuples):
+            setattr(
+                self,
+                button,
+                AI4Animation.GUI.Button(
+                    text, 0.05, 0.15 + i / (len(tuples) + 1), 0.9, 0.65 / len(tuples),
+                    False, True, self.Canvas,
+                ),
+            )
+
+        if self.Button_Mesh is not None:
+            self.Button_Mesh.Active = True
 
     def Draw(self):
-        if not self.ShowGUI:
-            return
-
         boneSize = 0.0175
         if self.Button_Root.Active:
             AI4Animation.Draw.Transform(self.Root, 0.5)
@@ -476,14 +443,12 @@ class Actor(Component): #Rewrite this to get a hierarchy as input and make the m
             self.Entity.DrawHierarchy()
 
     def GUI(self):
-        if not self.ShowGUI:
-            return
-
         self.Canvas.GUI()
         self.Button_Root.GUI()
         self.Button_Skeleton.GUI()
         self.Button_Velocities.GUI()
-        self.Button_Mesh.GUI()
+        if self.Button_Mesh is not None:
+            self.Button_Mesh.GUI()
         self.Button_Labels.GUI()
         self.Button_Hierarchy.GUI()
 
@@ -492,7 +457,7 @@ class Actor(Component): #Rewrite this to get a hierarchy as input and make the m
                 self.GetBoneNames(), self.GetPositions(), 0.01, AI4Animation.Color.BLACK
             )
 
-        if self.Button_Mesh.IsPressed():
+        if self.Button_Mesh is not None and self.Button_Mesh.IsPressed():
             self.ToggleMesh()
 
     class Bone:

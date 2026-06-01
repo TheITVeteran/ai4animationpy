@@ -5,7 +5,7 @@ from io import BytesIO
 import cffi
 import numpy as np
 from ai4animation.AI4Animation import AI4Animation
-from ai4animation.Math import Tensor
+from ai4animation.Math import Tensor, Transform
 from pyray import load_model_from_mesh, Matrix, Mesh
 from raylib import (
     LoadImageFromMemory,
@@ -243,6 +243,16 @@ class SkinnedMesh:
                 ).reshape(gpu_mesh.boneCount, 4, 4)
                 self.BoneMatrixViews.append(matView)
 
+        # Precompute model-joint → scene entity index mapping.
+        # Uses name lookup so hierarchy and model joint counts/orderings can differ.
+        valid = [
+            (i, actor.NameToEntity[name].Index)
+            for i, name in enumerate(model.JointNames)
+            if name in actor.NameToEntity
+        ]
+        self._model_idx  = np.array([p[0] for p in valid], dtype=np.int32)
+        self._entity_idx = np.array([p[1] for p in valid], dtype=np.int32)
+        
         print(
             f"Initialized {len(self.Models)} skinned submeshes with {boneCount} bones"
         )
@@ -278,10 +288,15 @@ class SkinnedMesh:
             return
 
         # Update bone matrices for all meshes (GPU will use these in shaders)
-        transforms = np.matmul(
-            AI4Animation.Scene.GetSkinningTransforms(self.Actor.Entities),
-            self.BindMatrices,
-        )
+        skinning = np.tile(np.eye(4, dtype=np.float32), (self.BoneCount, 1, 1))
+        if len(self._entity_idx):
+            T = AI4Animation.Scene.Transforms[self._entity_idx]
+            S = AI4Animation.Scene.Scales[self._entity_idx]
+            skinning[self._model_idx] = Transform.TRS(
+                Transform.GetPosition(T), Transform.GetRotation(T), S
+            )
+
+        transforms = np.matmul(skinning, self.BindMatrices)
         for matView in self.BoneMatrixViews:
             matView[:] = transforms
 

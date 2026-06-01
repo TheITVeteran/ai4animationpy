@@ -6,7 +6,8 @@ from io import BytesIO
 from typing import Dict, List, Tuple
 
 import numpy as np
-from ai4animation.Animation.Motion import Hierarchy, Motion
+from ai4animation.Animation.Hierarchy import Hierarchy
+from ai4animation.Animation.Motion import Motion
 from ai4animation.Import.ModelImporter import Mesh, ModelImporter, Skin
 from ai4animation.Math import Quaternion, Tensor, Transform, Vector3
 from numpy.typing import NDArray

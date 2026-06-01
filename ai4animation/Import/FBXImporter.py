@@ -72,7 +72,8 @@ FbxScene = None
 FbxTime = None
 IOSROOT = None
 
-from ai4animation.Animation.Motion import Hierarchy, Motion
+from ai4animation.Animation.Hierarchy import Hierarchy
+from ai4animation.Animation.Motion import Motion
 from ai4animation.Import.ModelImporter import Mesh, ModelImporter, Skin
 from ai4animation.Math import Quaternion, Tensor, Transform, Vector3
 

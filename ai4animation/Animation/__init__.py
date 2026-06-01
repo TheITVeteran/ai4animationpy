@@ -3,6 +3,7 @@ from . import (
     ContactModule,
     Dataset,
     GuidanceModule,
+    Hierarchy,
     Module,
     Motion,
     MotionModule,
@@ -12,6 +13,7 @@ from . import (
 )
 
 __all__ = [
+    "Hierarchy",
     "Motion",
     "TimeSeries",
     "Module",

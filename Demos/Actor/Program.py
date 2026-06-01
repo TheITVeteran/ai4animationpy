@@ -17,7 +17,7 @@ class Program:
         entity = AI4Animation.Scene.AddEntity("Actor")
         model_path = os.path.join(ASSETS_PATH, "Model.glb")
         self.Actor = entity.AddComponent(
-            Actor, model_path, Definitions.FULL_BODY_NAMES, True
+            Actor, model_path, Definitions.FULL_BODY_NAMES
         )
         self.Actor.Entity.SetPosition(Vector3.Create(0, 0, 0))
 
