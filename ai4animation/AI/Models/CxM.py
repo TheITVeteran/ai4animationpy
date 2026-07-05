@@ -1,4 +1,5 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
+import numpy as np
 import torch
 import torch.nn as nn
 from ai4animation.AI.Library import Losses
@@ -6,9 +7,8 @@ from ai4animation.AI.Library.Blocks import FiLMLinearBlock, LinearBlock, SpaceTi
 from ai4animation.AI.Library.Layers import CodebookLayer
 from ai4animation.AI.Library.Statistics import RunningStatistics
 from ai4animation.AI.Models import CategoricalEncoderDecoder, MultiLayerPerceptron
-
 from sklearn.decomposition import PCA
-import numpy as np
+
 
 def plot_pca(ax, tensor, title, labels=None):
     """tensor: [B, D] torch tensor of probs or codes."""
@@ -26,7 +26,9 @@ def plot_pca(ax, tensor, title, labels=None):
             ax.scatter(X2[m, 0], X2[m, 1], s=8, alpha=0.6, label=f"cls {c}")
         ax.legend(fontsize=7, loc="best")
     ax.set_title(title)
-    ax.set_xlabel("PC1"); ax.set_ylabel("PC2")
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+
 
 # Codebook Matching Model
 class Model(nn.Module):
@@ -96,7 +98,6 @@ class Prior(nn.Module):
         codes = self.Codebook(logits, sample=True)
         probs = self.Codebook(logits, sample=False)
 
-
         # # probs: [B, Channels * Classes]  -- per-sample softmax already from Codebook
         # B = probs.shape[0]
         # p = probs.reshape(B, self.Codebook.Channels, self.Codebook.Classes)
@@ -111,8 +112,6 @@ class Prior(nn.Module):
 
         # # 2) Sharpness: each sample should commit to one class per channel
         # sample_entropy = -(p * p.add(eps).log()).sum(-1).mean()  # mean over B, Ch
-
-
 
         pred = self.decode(codes)
         result = {
@@ -155,9 +154,11 @@ class Sampler(nn.Module):
     def denoise(self, z, x):
         return self.Denoiser(torch.cat((z, x), -1))
 
-    def learn(self, features, targets, update_statistics):
+    def learn(self, features, targets, update_statistics, noise=None):
         if update_statistics:
             self.FeatureStatistics.Update(features)
+        if noise is not None:
+            features += torch.randn_like(features) * noise * self.FeatureStatistics.GetStd()
         features = self.FeatureStatistics.Normalize(features)
 
         target_codes = self.Codebook(targets, sample=False)
@@ -330,6 +331,7 @@ class MotionSampler(Sampler):
             codebook=CodebookLayer(codebook_channels, codebook_classes),
         )
 
+
 ####################################################################################################
 ####################################################################################################
 ####################################################################################################
@@ -408,17 +410,15 @@ class MotionModel(Model):
             ),
         )
 
-####################################################################################################
-####################################################################################################
-####################################################################################################
-# Toy Example
-####################################################################################################
-####################################################################################################
-####################################################################################################
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    from ai4animation import Generators, Plotting
 
+####################################################################################################
+####################################################################################################
+####################################################################################################
+# Toy Example Ambiguous Square Functions
+####################################################################################################
+####################################################################################################
+####################################################################################################
+def ToyExample1():
     # Toy Example Code
     FEATURES = 10
     SEQUENCE_LENGTH = 1
@@ -426,7 +426,7 @@ if __name__ == "__main__":
     BATCH_COUNT = 1000
     BATCH_SIZE = 32
     ITERATIONS = 10
-    TEST_SIZE = 100
+    TEST_SIZE = 128
     DRAW_INTERVAL = 100
 
     model = VanillaModel(
@@ -438,8 +438,21 @@ if __name__ == "__main__":
         denoiser_dim=64,
         codebook_channels=16,
         codebook_classes=8,
-        dropout=0.1,
+        dropout=0.0,
     )
+
+    # model = MotionModel(
+    #     sequence_length=SEQUENCE_LENGTH,
+    #     input_dim=1,
+    #     output_dim=FEATURES,
+    #     encoder_dim=64,
+    #     decoder_dim=64,
+    #     estimator_dim=64,
+    #     denoiser_dim=64,
+    #     codebook_channels=16,
+    #     codebook_classes=8,
+    #     dropout=0.0,
+    # )
 
     optimizer = torch.optim.Adam(model.parameters())
 
@@ -456,16 +469,25 @@ if __name__ == "__main__":
         )
         X = torch.cat((X1, X2), dim=0)
         Y = torch.cat((Y1, Y2), dim=0)
-
+        # Y = Y.reshape(-1, SEQUENCE_LENGTH, FEATURES)
         return (X, Y)
 
-    plots = None
+    min = 1.0
+    max = 4.0
+    scale = 1.0
+    steepness = [0, 1, 2, 3, 4, 5]
+    plots_global = plt.subplots(1, 3, figsize=(9, 3))
+    plots_steps = plt.subplots(
+        len(steepness),
+        ITERATIONS + 1,
+        figsize=(int(scale * ITERATIONS + 1), int(scale * len(steepness))),
+    )
     for e in range(1, EPOCH_COUNT + 1, 1):
         print("Epoch", e)
         for i in range(0, BATCH_COUNT):
             print("Progress", round(100 * i / BATCH_COUNT, 2), "%", end="\r")
 
-            X, Y = generate_data(BATCH_SIZE, 1.0, 4.0)
+            X, Y = generate_data(BATCH_SIZE, min, max)
 
             _, loss = model.learn(X, Y, e == 1)
 
@@ -477,17 +499,20 @@ if __name__ == "__main__":
 
             # PLOTTING
             plt.ion()
-            plots = plots if plots is not None else plt.subplots(2, 3, figsize=(9, 6))
-            fig, axes = plots
             if i % DRAW_INTERVAL == 0:
                 model.eval()
                 with torch.no_grad():
-                    Xtrue, Ytrue = generate_data(TEST_SIZE, 1, 4)
-                    Ypred = model(Xtrue, iterations=ITERATIONS, sample=True)
+                    Xtrue, Ytrue = generate_data(TEST_SIZE, min, max)
+                    Ypred = model(
+                        Xtrue,
+                        iterations=ITERATIONS,
+                        sample=True,
+                    )
                     Yrec = model.Prior.reconstruct(Ytrue, sample=True)
 
+                    fig, axes = plots_global
                     Plotting.PlotFunctions(
-                        axes[0, 0],
+                        axes[0],
                         Ytrue.detach().flatten(start_dim=1),
                         "Ground Truth",
                         step=1,
@@ -495,7 +520,7 @@ if __name__ == "__main__":
                     )
 
                     Plotting.PlotFunctions(
-                        axes[0, 1],
+                        axes[1],
                         Yrec.detach().flatten(start_dim=1),
                         "Reconstruction",
                         step=1,
@@ -503,49 +528,139 @@ if __name__ == "__main__":
                     )
 
                     Plotting.PlotFunctions(
-                        axes[0, 2],
+                        axes[2],
                         Ypred.detach().flatten(start_dim=1),
                         "Sampling",
                         step=1,
                         yLimits=[-5, 5],
                     )
 
-                    Plotting.PlotFunctions(
-                        axes[1, 0],
-                        model(
-                            torch.zeros_like(Xtrue), iterations=ITERATIONS, sample=True
-                        )
-                        .detach()
-                        .flatten(start_dim=1),
-                        "X=0",
+                    # fig, axes = plots_steps
+                    # for s in range(len(steepness)):
+                    #     for i in range(ITERATIONS+1):
+                    #         y = model(
+                    #             steepness[s] * torch.ones_like(Xtrue),
+                    #             iterations=i,
+                    #             sample=True,
+                    #         )
+                    #         Plotting.PlotFunctions(
+                    #             axes[s, i],
+                    #             y.detach().flatten(start_dim=1),
+                    #             "X=" + str(steepness[s]) + " I=" + str(i),
+                    #             step=1,
+                    #             yLimits=[-5, 5],
+                    #         )
+
+                model.train()
+                plt.tight_layout()
+                plt.show()
+                plt.gcf().canvas.draw()
+                plt.gcf().canvas.start_event_loop(1e-1)
+
+
+####################################################################################################
+####################################################################################################
+####################################################################################################
+# Toy Example Two Moons
+####################################################################################################
+####################################################################################################
+####################################################################################################
+def ToyExample2():
+    # Toy Example Code
+    INPUT_DIM = 1
+    OUTPUT_DIM = 2
+    EPOCH_COUNT = 150
+    BATCH_COUNT = 1000
+    BATCH_SIZE = 256
+    ITERATIONS = 10
+    TEST_SIZE = 1024
+    DRAW_INTERVAL = 100
+
+    model = VanillaModel(
+        input_dim=INPUT_DIM,
+        output_dim=OUTPUT_DIM,
+        encoder_dim=64,
+        decoder_dim=64,
+        estimator_dim=64,
+        denoiser_dim=64,
+        codebook_channels=16,
+        codebook_classes=8,
+        dropout=0.0,
+    )
+
+    optimizer = torch.optim.Adam(model.parameters())
+
+    loss_history = Plotting.LossHistory(
+        "Loss History", BATCH_COUNT, drawInterval=DRAW_INTERVAL, yScale="log"
+    )
+
+    def generate_data(batch, noise):
+        Y, X = Generators.FourMoons(batch, noise)
+        X = X.reshape(-1, 1)
+        return (X, Y)
+
+    min = -1.25
+    max = 2.5
+    noise = 0.05
+    plots_global = plt.subplots(1, 3, figsize=(9, 3))
+    for e in range(1, EPOCH_COUNT + 1, 1):
+        print("Epoch", e)
+        for i in range(0, BATCH_COUNT):
+            print("Progress", round(100 * i / BATCH_COUNT, 2), "%", end="\r")
+
+            X, Y = generate_data(BATCH_SIZE, noise)
+
+            _, loss = model.learn(X, Y, e == 1)
+
+            optimizer.zero_grad()
+            sum(loss.values()).backward()
+            optimizer.step()
+
+            loss_history.Add(loss)
+
+            # PLOTTING
+            plt.ion()
+            if i % DRAW_INTERVAL == 0:
+                model.eval()
+                with torch.no_grad():
+                    Xtrue, Ytrue = generate_data(TEST_SIZE, noise)
+                    Ypred = model(
+                        Xtrue,
+                        iterations=ITERATIONS,
+                        sample=True,
+                        # sample=(
+                        #     torch.randn(Xtrue.shape[0], model.Sampler.Codebook.Size, device=Xtrue.device),
+                        #     torch.zeros(Xtrue.shape[0], model.Sampler.Codebook.Size, device=Xtrue.device)
+                        # )
+                    )
+                    Yrec = model.Prior.reconstruct(Ytrue, sample=True)
+
+                    fig, axes = plots_global
+                    Plotting.PlotScatter(
+                        axes[0],
+                        Ytrue.detach().reshape(-1, 2),
+                        "Ground Truth",
                         step=1,
-                        yLimits=[-5, 5],
+                        yLimits=[min, max],
+                        labels=Xtrue.detach().reshape(-1, 1),
                     )
 
-                    Plotting.PlotFunctions(
-                        axes[1, 1],
-                        model(
-                            torch.ones_like(Xtrue), iterations=ITERATIONS, sample=True
-                        )
-                        .detach()
-                        .flatten(start_dim=1),
-                        "X=1",
+                    Plotting.PlotScatter(
+                        axes[1],
+                        Yrec.detach().reshape(-1, 2),
+                        "Reconstruction",
                         step=1,
-                        yLimits=[-5, 5],
+                        yLimits=[min, max],
+                        labels=Xtrue.detach().reshape(-1, 1),
                     )
 
-                    Plotting.PlotFunctions(
-                        axes[1, 2],
-                        model(
-                            4 * torch.ones_like(Xtrue),
-                            iterations=ITERATIONS,
-                            sample=True,
-                        )
-                        .detach()
-                        .flatten(start_dim=1),
-                        "X=4",
+                    Plotting.PlotScatter(
+                        axes[2],
+                        Ypred.detach().reshape(-1, 2),
+                        "Sampling",
                         step=1,
-                        yLimits=[-5, 5],
+                        yLimits=[min, max],
+                        labels=Xtrue.detach().reshape(-1, 1),
                     )
 
                 model.train()
@@ -553,3 +668,11 @@ if __name__ == "__main__":
                 plt.show()
                 plt.gcf().canvas.draw()
                 plt.gcf().canvas.start_event_loop(1e-1)
+
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    from ai4animation import Generators, Plotting
+
+    # ToyExample1()
+    ToyExample2()

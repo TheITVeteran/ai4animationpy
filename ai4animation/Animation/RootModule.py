@@ -1,4 +1,5 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
+import threading
 from enum import Enum
 
 from ai4animation import Utility
@@ -53,8 +54,9 @@ class RootModule(Module):
         ) = self.BoneIndices
 
     def Initialize(self):
-        self.StandardMatrices = self.Compute(False)
-        self.MirroredMatrices = self.Compute(True)
+        self.StandardMatrices = None
+        self.MirroredMatrices = None
+        self.Lock = threading.Lock()
 
     def GetName(self):
         return "Root"
@@ -114,12 +116,13 @@ class RootModule(Module):
             matrices = Transform.TR(positions, Rotation.LookPlanar(directions))
             return matrices
         else:
-            frame_indices = self.Motion.GetFrameIndices(timestamps)
-            matrices = (
-                self.StandardMatrices[frame_indices]
-                if not mirrored
-                else self.MirroredMatrices[frame_indices]
-            )
+            with self.Lock:
+                if self.StandardMatrices is None:
+                    self.StandardMatrices = self.Compute(None, False)
+                if self.MirroredMatrices is None:
+                    self.MirroredMatrices = self.Compute(None, True)
+            matrices = self.MirroredMatrices if mirrored else self.StandardMatrices
+            matrices = matrices[self.Motion.GetFrameIndices(timestamps)]
             if self.Motion.Scale != 1.0:
                 matrices = Transform.Scale(matrices, self.Motion.Scale)
             return matrices
@@ -211,10 +214,16 @@ class RootModule(Module):
             vec = Tensor.Stack((x, y, z, w), -1)
             return vec
 
-    def Compute(self, mirrored):
+    def Compute(self, timestamps, mirrored):
         bone_transformations = self.Motion.GetBoneTransformations(
-            timestamps=None, bone_names_or_indices=self.BoneIndices, mirrored=mirrored
+            timestamps=timestamps,
+            bone_names_or_indices=self.BoneIndices,
+            mirrored=mirrored,
         )
+        if self.Motion.Scale != 1.0:
+            bone_transformations = Transform.Scale(
+                bone_transformations, 1.0 / self.Motion.Scale
+            )
         bone_positions = Transform.GetPosition(bone_transformations)
         hip_pos = bone_positions[..., 0, :]
         left_hip_pos = bone_positions[..., 1, :]

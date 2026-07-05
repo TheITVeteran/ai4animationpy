@@ -12,9 +12,7 @@ from ai4animation.Math import Tensor
 class ContactModule(Module):
     def __init__(
         self, motion: Motion, configs, proportional=False
-    ) -> (
-        None
-    ):  # Each config is a tuple of (boneName, velocityThreshold)
+    ) -> None:  # Each config is a tuple of (boneName, velocityThreshold)
         super().__init__(motion)
 
         self.Configs = configs
@@ -25,7 +23,9 @@ class ContactModule(Module):
 
         for config in configs:
             if len(config) != 2:
-                print("ContactModule config length did not have expected tuple size of 2 for (boneName, velocityThreshold)")
+                print(
+                    "ContactModule config length did not have expected tuple size of 2 for (boneName, velocityThreshold)"
+                )
 
     def Initialize(self):
         pass
@@ -49,7 +49,9 @@ class ContactModule(Module):
 
     def GUI(self, editor):
         if Module.Visualize[ContactModule]:
-            self.ComputeSeries(editor.Timestamp, editor.Mirror, editor.TimeSeries).GUI(0.3, 0.9, 0.4, 0.05)
+            self.ComputeSeries(editor.Timestamp, editor.Mirror, editor.TimeSeries).GUI(
+                0.3, 0.9, 0.4, 0.05
+            )
 
     def Draw(self, editor):
         if Module.Visualize[ContactModule]:
@@ -61,7 +63,9 @@ class ContactModule(Module):
             for i in range(contacts.shape[0]):
                 if contacts[i]:
                     AI4Animation.Draw.Sphere(
-                        positions[i], size=0.04, color=Utility.Opacity(AI4Animation.Color.GREEN, 0.5)
+                        positions[i],
+                        size=0.04,
+                        color=Utility.Opacity(AI4Animation.Color.GREEN, 0.5),
                     )
                 else:
                     AI4Animation.Draw.Sphere(
@@ -83,7 +87,6 @@ class ContactModule(Module):
         else:
             scales = 1
         return velocities < (self.VelocityThresholds * scales)
-
 
     class Series(TimeSeries):
         def __init__(self, timeSeries, names, values=None):

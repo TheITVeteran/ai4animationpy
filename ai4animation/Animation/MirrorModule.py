@@ -1,12 +1,14 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 from enum import Enum
 
+import numpy as np
 from ai4animation.AI4Animation import AI4Animation
 from ai4animation.Animation.Module import Module
 from ai4animation.Animation.Motion import Motion
-from ai4animation.Math import Rotation, Tensor, Transform, Vector3
+from ai4animation.Math import Rotation, Transform, Vector3
 
 # Correction
+
 
 class MirrorModule(Module):
     class Map(Enum):
@@ -17,16 +19,19 @@ class MirrorModule(Module):
         self,
         motion: Motion,
         axis,  # Vector3
-        correction=Vector3.Create(0,0,0),  # Vector3 for correcting local joint rotation
-        map=Map.Symmetric, # Map for applying the correction across joints
+        correction=Vector3.Create(
+            0, 0, 0
+        ),  # Vector3 for correcting local joint rotation
+        map=Map.Symmetric,  # Map for applying the correction across joints
         overrides={},  # Dictionary {Name -> Vector3} to override correction values for specific joints
     ) -> None:
         super().__init__(motion)
 
-        symmetry = self.DetectSymmetry(self.Motion.Hierarchy.BoneNames)
+        self.Axis = axis
+        self.Symmetry = np.array(self.DetectSymmetry(self.Motion.Hierarchy.BoneNames))
 
         correctives = Rotation.Euler(Vector3.Zero(len(motion.Hierarchy.BoneNames)))
-        for i, sym_idx in enumerate(symmetry):
+        for i, sym_idx in enumerate(self.Symmetry):
             if map is MirrorModule.Map.Symmetric:
                 if i != sym_idx:
                     correctives[i] = Rotation.Euler(correction)
@@ -34,14 +39,8 @@ class MirrorModule(Module):
                 correctives[i] = Rotation.Euler(correction)
 
         for k, v in overrides.items():
-            correctives[self.Motion.Hierarchy.GetBoneIndex([k])] = (
-                Rotation.Euler(v)
-                )
-
-        transforms = Transform.GetMirror(self.Motion.Frames, axis)
-        delta = Transform.R(correctives[symmetry]).reshape(1, -1, 4, 4)
-        transforms = Transform.Multiply(transforms, delta)
-        self.Transforms = transforms[:, symmetry]
+            correctives[self.Motion.Hierarchy.GetBoneIndex([k])] = Rotation.Euler(v)
+        self.Delta = Transform.R(correctives[self.Symmetry]).reshape(1, -1, 4, 4)
 
     def Initialize(self):
         pass
@@ -50,7 +49,12 @@ class MirrorModule(Module):
         return "Mirror"
 
     def GetBoneTransformations(self, frame_indices, bone_indices):
-        return self.Transforms[frame_indices][:, bone_indices]
+        sym_bone_indices = self.Symmetry[bone_indices]
+        transforms = Transform.GetMirror(
+            self.Motion.Frames[frame_indices][:, sym_bone_indices], self.Axis
+        )
+        transforms = Transform.Multiply(transforms, self.Delta[:, sym_bone_indices])
+        return transforms
 
     def GUI(self, editor):
         if Module.Visualize[MirrorModule]:

@@ -63,6 +63,17 @@ def PlotFunctions(ax, values, title, step=1, yLimits=None):
     ax.set_axis_off()
     ax.set_title(title)
 
+def PlotScatter(ax, values, title, step=1, yLimits=None, labels=None):
+    values = ToNumpy(values)
+    labels = ToNumpy(labels)
+
+    ax.cla()
+    # ax.scatter(values[..., 0], values[..., 1])
+    ax.scatter(values[:, 0], values[:, 1], c=labels, cmap='viridis', edgecolors='k')
+    if yLimits is not None:
+        ax.set_ylim([yLimits[0], yLimits[1]])
+    ax.set_axis_off()
+    ax.set_title(title)
 
 def PlotGridMap(ax, values, title):
     ax.cla()

@@ -772,7 +772,9 @@ def HorizontalPivot(
     backgroundColor=None,
     pivotColor=None,
 ):
-    if limits is not None:
+    if limits[0] == limits[1]:
+        value = limits[0]
+    else:
         value = Utility.Normalize(value, limits[0], limits[1], 0.0, 1.0)
     frameRectangle = Rectangle(x, y, w, h).Screen()
     pivotRectangle = Rectangle(
@@ -802,7 +804,10 @@ def HorizontalBar(
     x, y, w, h, value, label=None, limits=None, backgroundColor=None, pivotColor=None
 ):
     if limits is not None:
-        value = Utility.Normalize(value, limits[0], limits[1], 0.0, 1.0)
+        if limits[0] == limits[1]:
+            value = limits[0]
+        else:
+            value = Utility.Normalize(value, limits[0], limits[1], 0.0, 1.0)
     frameRectangle = Rectangle(x, y, w, h).Screen()
     pivotRectangle = Rectangle(x, y, value * w, h).Screen()
     backgroundColor = (

@@ -37,11 +37,27 @@ class LinearLayer(torch.nn.Module):
 
 
 class FiLMLayer(torch.nn.Module):
-    def __init__(self, feature_size, film_size):
+    def __init__(
+        self,
+        input_size,
+        film_size,
+    ):
         super(FiLMLayer, self).__init__()
 
-        self.Scale = nn.Linear(film_size, feature_size)
-        self.Shift = nn.Linear(film_size, feature_size)
+        self.InputSize = film_size
+        self.OutputSize = input_size
+
+        self.Scale = nn.Linear(film_size, input_size)
+        self.Shift = nn.Linear(film_size, input_size)
+
+    def input_dim(self):
+        return self.OutputSize
+
+    def film_dim(self):
+        return self.InputSize
+
+    def output_dim(self):
+        return self.OutputSize
 
     def forward(self, z, film):
         return self.Scale(film) * z + self.Shift(film)
@@ -66,6 +82,9 @@ class FiLMLinearLayer(torch.nn.Module):
 
     def output_dim(self):
         return self.Linear.output_dim()
+
+    def film_dim(self):
+        return self.FiLM.input_dim()
 
     def forward(self, z, film):
         z = self.FiLM(z, film)
@@ -106,6 +125,10 @@ class CodebookLayer(torch.nn.Module):
 
         self.Channels = channels
         self.Classes = classes
+
+    @property
+    def Size(self):
+        return self.Channels * self.Classes
 
     def dimensions(self):
         return self.Channels * self.Classes

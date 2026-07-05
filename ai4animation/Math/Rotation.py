@@ -18,6 +18,32 @@ def Identity(shape=None):
     return tensor
 
 
+# def Euler(*values):  # Euler angles in degrees, convention Y * X * Z (ZXY)
+#     if len(values) == 1:
+#         angles = Tensor.Create(values[0])
+#     if len(values) == 3:
+#         angles = Tensor.Transpose(Tensor.Create(values))
+#     rad = Tensor.Deg2Rad(angles)
+#     cx = Tensor.Cos(rad[..., 0])
+#     sx = Tensor.Sin(rad[..., 0])
+#     cy = Tensor.Cos(rad[..., 1])
+#     sy = Tensor.Sin(rad[..., 1])
+#     cz = Tensor.Cos(rad[..., 2])
+#     sz = Tensor.Sin(rad[..., 2])
+#     shape = list(angles.shape[:-1]) + [3, 3]
+#     r = Tensor.Empty(shape, backend=Tensor.GetBackend(angles))
+#     r[..., 0, 0] = cy * cz + sx * sy * sz
+#     r[..., 0, 1] = -cy * sz + sx * sy * cz
+#     r[..., 0, 2] = cx * sy
+#     r[..., 1, 0] = cx * sz
+#     r[..., 1, 1] = cx * cz
+#     r[..., 1, 2] = -sx
+#     r[..., 2, 0] = -sy * cz + sx * cy * sz
+#     r[..., 2, 1] = sy * sz + sx * cy * cz
+#     r[..., 2, 2] = cx * cy
+#     return r
+
+
 def Euler(*values):  # Euler angles in degrees
     if len(values) == 1:
         angles = Tensor.Create(values[0])

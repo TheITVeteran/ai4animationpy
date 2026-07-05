@@ -1,8 +1,10 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
+import math
+
 import raylib as rl
 from ai4animation import Utility
 from ai4animation.AI4Animation import AI4Animation
-from ai4animation.Math import Transform as t
+from ai4animation.Math import Tensor, Transform as t, Vector3
 from raylib.colors import BLACK, BLUE, GREEN, RED, WHITE
 
 
@@ -73,6 +75,14 @@ def Cylinder(start, end, startSize, endSize, resolution=10, color=BLACK):
     end_list = end.tolist()
     for start_pos, end_pos in zip(start_list, end_list):
         rl.DrawCylinderEx(start_pos, end_pos, startSize, endSize, resolution, color)
+
+
+def Quad(a, b, c, d, color):
+    for a, b, c, d in zip(a, b, c, d):
+        rl.DrawTriangle3D(a.tolist(), b.tolist(), c.tolist(), color)
+        rl.DrawTriangle3D(a.tolist(), c.tolist(), d.tolist(), color)
+        rl.DrawTriangle3D(c.tolist(), b.tolist(), a.tolist(), color)
+        rl.DrawTriangle3D(d.tolist(), c.tolist(), a.tolist(), color)
 
 
 def Model(model, position, scale, color=WHITE):
@@ -152,3 +162,58 @@ def Skeleton(root, positions, actor, bones=None, size: float = 1.0, color=None):
         10,
         Utility.Opacity(color, 0.25),
     )
+
+
+def Frustum(
+    position, forward, fov=60.0, aspect=16.0 / 9.0, near=0.1, far=1.0, color=BLACK
+):
+    forward = forward / math.sqrt(float((forward * forward).sum()))
+    world_up = Vector3.Create(0, 1, 0)
+    right = Tensor.Cross(forward, world_up)
+    right = right / math.sqrt(float((right * right).sum()))
+    up = Tensor.Cross(right, forward)
+
+    half_v = math.tan(math.radians(fov) * 0.5)
+    half_h = half_v * aspect
+
+    near_h = half_v * near
+    near_w = half_h * near
+    far_h = half_v * far
+    far_w = half_h * far
+
+    near_center = position + forward * near
+    far_center = position + forward * far
+
+    ntl = near_center + up * near_h - right * near_w
+    ntr = near_center + up * near_h + right * near_w
+    nbl = near_center - up * near_h - right * near_w
+    nbr = near_center - up * near_h + right * near_w
+
+    ftl = far_center + up * far_h - right * far_w
+    ftr = far_center + up * far_h + right * far_w
+    fbl = far_center - up * far_h - right * far_w
+    fbr = far_center - up * far_h + right * far_w
+
+    Line(ntl, ntr, color)
+    Line(ntr, nbr, color)
+    Line(nbr, nbl, color)
+    Line(nbl, ntl, color)
+
+    Line(ftl, ftr, color)
+    Line(ftr, fbr, color)
+    Line(fbr, fbl, color)
+    Line(fbl, ftl, color)
+
+    Line(ntl, ftl, color)
+    Line(ntr, ftr, color)
+    Line(nbl, fbl, color)
+    Line(nbr, fbr, color)
+
+    # cap = Utility.Opacity(color, 0.5)
+    # Quad(ntl, ntr, nbr, nbl, cap)
+    # Quad(ftl, ftr, fbr, fbl, cap)
+    # fill = Utility.Opacity(color, 0.15)
+    # Quad(ntl, ntr, ftr, ftl, fill)
+    # Quad(nbl, nbr, fbr, fbl, fill)
+    # Quad(ntl, nbl, fbl, ftl, fill)
+    # Quad(ntr, nbr, fbr, ftr, fill)

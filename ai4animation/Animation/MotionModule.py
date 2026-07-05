@@ -1,21 +1,21 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 """Module for extracting per-bone motion features (positions, rotations, velocities)."""
 
+import numpy as np
 from ai4animation import Utility
 from ai4animation.AI4Animation import AI4Animation
 from ai4animation.Animation.Module import Module
 from ai4animation.Animation.Motion import Motion
 from ai4animation.Animation.RootModule import RootModule
 from ai4animation.Animation.TimeSeries import TimeSeries
-from ai4animation.Math import Tensor, Transform, Vector3, Rotation
-
-import numpy as np
+from ai4animation.Math import Rotation, Tensor, Transform, Vector3, Quaternion
 
 MAX_WINDOW = 2.0
 MIN_POWER = 0.0
 MAX_POWER = 1.0
 MAX_SHIFT = 0.5
 MAX_NOISE = 0.025
+
 
 class MotionModule(Module):
     def __init__(self, motion: Motion) -> None:
@@ -38,10 +38,19 @@ class MotionModule(Module):
         noise: float = 0.0,
     ):
         timestamps = timeseries.SimulateTimestamps(timestamp)
-        positions = self.GetPositions(timestamps, mirrored, names, smoothing, power, noise)
-        rotations = self.GetRotations(timestamps, mirrored, names, smoothing, power, noise)
-        velocities = self.GetVelocities(timestamps, mirrored, names, smoothing, power, noise)
-        instance = self.Series(timeseries, names, Transform.TR(positions, rotations), velocities)
+        # transforms = self.GetTransforms(
+        #     timestamps, mirrored, names, smoothing, power, noise
+        # )
+        transforms = Transform.TR(
+            self.GetPositions(timestamps, mirrored, names, smoothing, power, noise),
+            self.GetRotations(timestamps, mirrored, names, smoothing, power, noise),
+        )
+        velocities = self.GetVelocities(
+            timestamps, mirrored, names, smoothing, power, noise
+        )
+        instance = self.Series(
+            timeseries, names, transforms, velocities
+        )
         return instance
 
     def GetTransforms(
@@ -54,7 +63,7 @@ class MotionModule(Module):
         noise: float = 0.0,
     ):
         if smoothing is not None and smoothing.Window > 0.0:
-            return Transform.Normalize(
+            curves = Transform.Normalize(
                 self.SmoothCurves(
                     self.Motion.GetBoneTransformations,
                     timestamps,
@@ -65,7 +74,15 @@ class MotionModule(Module):
                 )
             )
         else:
-            return self.Motion.GetBoneTransformations(timestamps, names, mirrored)
+            curves = self.Motion.GetBoneTransformations(timestamps, names, mirrored)
+        if noise > 0.0:
+            # Position
+            curves[..., :3, 3] += noise * np.random.randn(*curves[..., :3, 3].shape)
+            # Rotation
+            angles = 180 * noise * Tensor.RandomUniform((*curves.shape[:-2], 3))
+            delta = Rotation.Euler(angles)
+            curves[..., :3, :3] = Rotation.RotationFrom(delta, curves[..., :3, :3])
+        return curves
 
     def GetPositions(
         self,
@@ -101,7 +118,7 @@ class MotionModule(Module):
         noise: float = 0.0,
     ):
         if smoothing is not None and smoothing.Window > 0.0:
-            return Rotation.Normalize(
+            curves = Rotation.Normalize(
                 self.SmoothCurves(
                     self.Motion.GetBoneRotations,
                     timestamps,
@@ -112,7 +129,12 @@ class MotionModule(Module):
                 )
             )
         else:
-            return self.Motion.GetBoneRotations(timestamps, names, mirrored)
+            curves = self.Motion.GetBoneRotations(timestamps, names, mirrored)
+        if noise > 0.0:
+            angles = 180 * noise * Tensor.RandomUniform((*curves.shape[:-2], 3))
+            delta = Rotation.Euler(angles)
+            curves = Rotation.RotationFrom(delta, curves)
+        return curves
 
     def GetVelocities(
         self,
@@ -123,17 +145,24 @@ class MotionModule(Module):
         power: float = 1.0,
         noise: float = 0.0,
     ):
-        if smoothing is not None and smoothing.Window > 0.0:
-            return self.SmoothCurves(
-                self.Motion.GetBoneVelocities,
-                timestamps,
-                mirrored,
-                names,
-                smoothing,
-                power,
-            )
-        else:
-            return self.Motion.GetBoneVelocities(timestamps, names, mirrored)
+        dt = self.Motion.DeltaTime
+        a = self.GetPositions(
+            timestamps - dt,
+            mirrored,
+            names,
+            smoothing,
+            power,
+            noise,
+        )
+        b = self.GetPositions(
+            timestamps,
+            mirrored,
+            names,
+            smoothing,
+            power,
+            noise,
+        )
+        return (b - a) / dt
 
     def SmoothCurves(self, fn, timestamps, mirrored, names, smoothing, power):
         axis = len(timestamps.shape)
@@ -156,10 +185,10 @@ class MotionModule(Module):
 
         y += 0
         self.Slider_SmoothWindow = AI4Animation.GUI.Slider(
-            x, y, w/2, h, 0.0, 0.0, MAX_WINDOW, label="Smooth Window"
+            x, y, w / 2, h, 0.0, 0.0, MAX_WINDOW, label="Smooth Window"
         )
         self.Slider_SmoothPower = AI4Animation.GUI.Slider(
-            x+w/2, y, w/2, h, 1.0, MIN_POWER, MAX_POWER, label="Smooth Power"
+            x + w / 2, y, w / 2, h, 1.0, MIN_POWER, MAX_POWER, label="Smooth Power"
         )
         self.Button_SmoothRandomize = AI4Animation.GUI.Button(
             "Random", x + w, y, 0.1, h, False, True
@@ -196,12 +225,20 @@ class MotionModule(Module):
     def Draw(self, editor):
         if Module.Visualize[MotionModule]:
             if self.Button_SmoothRandomize.Active:
-                self.Slider_SmoothWindow.SetValue(Tensor.RandomUniform(min=0.0, max=MAX_WINDOW))
-                self.Slider_SmoothPower.SetValue(Tensor.RandomUniform(min=MIN_POWER, max=MAX_POWER))
+                self.Slider_SmoothWindow.SetValue(
+                    Tensor.RandomUniform(min=0.0, max=MAX_WINDOW)
+                )
+                self.Slider_SmoothPower.SetValue(
+                    Tensor.RandomUniform(min=MIN_POWER, max=MAX_POWER)
+                )
             if self.Button_ShiftRandomize.Active:
-                self.Slider_ShiftAmount.SetValue(Tensor.RandomUniform(min=0.0, max=MAX_SHIFT))
+                self.Slider_ShiftAmount.SetValue(
+                    Tensor.RandomUniform(min=0.0, max=MAX_SHIFT)
+                )
             if self.Button_NoiseRandomize.Active:
-                self.Slider_NoiseAmount.SetValue(Tensor.RandomUniform(min=0.0, max=MAX_NOISE))
+                self.Slider_NoiseAmount.SetValue(
+                    Tensor.RandomUniform(min=0.0, max=MAX_NOISE)
+                )
 
             window = self.Slider_SmoothWindow.GetValue()
             power = self.Slider_SmoothPower.GetValue()
@@ -295,8 +332,10 @@ class MotionModule(Module):
             thickness=1.0,
             drawConnections=True,
             drawPositions=True,
+            drawRotations=True,
             drawVelocities=True,
             positionColor=None,
+            rotationColor=None,
             velocityColor=None,
             actor=None,
         ):
@@ -305,7 +344,9 @@ class MotionModule(Module):
 
             if actor is None:
                 for i, _ in enumerate(self.Names):
-                    positions = Transform.GetPosition(self.Transforms[start:end, i])
+                    transforms = self.Transforms[start:end, i]
+                    positions = Transform.GetPosition(transforms)
+                    rotations = Transform.GetRotation(transforms)
                     velocities = self.Velocities[start:end, i]
                     pColor = (
                         AI4Animation.Color.BLACK
@@ -325,6 +366,10 @@ class MotionModule(Module):
                     if drawPositions:
                         AI4Animation.Draw.Sphere(
                             positions, 0.02 * thickness, color=pColor
+                        )
+                    if drawRotations:
+                        AI4Animation.Draw.Transform(
+                            transforms, 0.2 * thickness, 0.4 * thickness
                         )
                     if drawVelocities:
                         AI4Animation.Draw.Vector(

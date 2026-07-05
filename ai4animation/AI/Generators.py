@@ -2,6 +2,7 @@
 """Synthetic data generators for testing generative models."""
 
 import torch
+from sklearn.datasets import make_moons
 
 
 def SquareFunctions(samples, resolution, min=0.0, max=1.0):
@@ -82,6 +83,23 @@ def GradientAmbiguousSineFunctions(samples, resolution, min=0.0, max=1.0):
     return X, Y
 
 
-def TwoMoons():
-    pass
-    # target = Tensor(make_moons(batch, noise=0.05)[0])
+def TwoMoons(samples, noise):
+    X, Y = make_moons(n_samples=samples, noise=noise)
+    X = torch.from_numpy(X).to(torch.float32)
+    Y = torch.from_numpy(Y).to(torch.float32)
+    return X, Y
+
+def FourMoons(samples, noise):
+    X1, Y1 = make_moons(n_samples=int(samples/2), noise=noise)
+    X2, Y2 = make_moons(n_samples=int(samples/2), noise=noise)
+    v = X2.copy()
+    X2[..., 0] = v[..., 1] + 0.25
+    X2[..., 1] = v[..., 0]
+    Y2 += 2
+    X1 = torch.from_numpy(X1).to(torch.float32)
+    Y1 = torch.from_numpy(Y1).to(torch.float32)
+    X2 = torch.from_numpy(X2).to(torch.float32)
+    Y2 = torch.from_numpy(Y2).to(torch.float32)
+    X = torch.cat((X1, X2), axis=0)
+    Y = torch.cat((Y1, Y2), axis=0)
+    return X, Y

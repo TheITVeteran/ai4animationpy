@@ -7,6 +7,7 @@ import numpy as np
 from ai4animation.Animation.Hierarchy import Hierarchy
 from ai4animation.Math import Quaternion, Tensor, Transform, Vector3
 
+
 class Motion:
     def __init__(self, name, hierarchy, frames, framerate, operation=None):
         self.Name = name
@@ -163,18 +164,6 @@ class Motion:
         pos_current = self.GetBonePositions(t_current, bone_names_or_indices, mirrored)
         return (pos_current - pos_previous) / self.DeltaTime
 
-    def GetBoneVelocity(self, timestamp, bone, mirrored=False):
-        if timestamp - self.DeltaTime < 0.0:
-            return (
-                self.GetBonePositions(timestamp + self.DeltaTime, bone, mirrored)
-                - self.GetBonePositions(timestamp, bone, mirrored)
-            ) / self.DeltaTime
-        else:
-            return (
-                self.GetBonePositions(timestamp, bone, mirrored)
-                - self.GetBonePositions(timestamp - self.DeltaTime, bone, mirrored)
-            ) / self.DeltaTime
-
     def GetBoneLengths(
         self,
         timestamps=None,
@@ -191,13 +180,19 @@ class Motion:
         if parent_names_or_indices is None:
             parent_names_or_indices = self.Hierarchy.ParentNames
 
+        # Replace None parents with the bone name itself (creates new list, no side effects)
+        parent_names_or_indices = [
+            bone if parent is None else parent
+            for bone, parent in zip(bone_names_or_indices, parent_names_or_indices)
+        ]
+
         bone_indices = self.GetBoneIndices(bone_names_or_indices)
         parent_indices = self.GetBoneIndices(parent_names_or_indices)
-        parent_indices = [0 if x == -1 else x for x in parent_indices]
+
         bone_positions = self.GetBonePositions(timestamps, bone_indices, mirrored)
         parent_positions = self.GetBonePositions(timestamps, parent_indices, mirrored)
-        bone_lengths = Vector3.Distance(bone_positions, parent_positions)
-        return bone_lengths
+
+        return Vector3.Distance(bone_positions, parent_positions)
 
     def GetBodyProportion(
         self,
@@ -206,7 +201,9 @@ class Motion:
         parent_names_or_indices=None,
         mirrored=False,
     ):
-        lengths = self.GetBoneLengths(timestamps, bone_names_or_indices, parent_names_or_indices, mirrored)
+        lengths = self.GetBoneLengths(
+            timestamps, bone_names_or_indices, parent_names_or_indices, mirrored
+        )
         lengths = Tensor.Squeeze(lengths, -1)
         proportion = Tensor.Sum(lengths, axis=-1, keepDim=True)
         return proportion
@@ -301,7 +298,7 @@ class Motion:
         cls,
         absolute_path,
         names=None,
-        scale=1.0, # TODO: not yet supported
+        scale=1.0,  # TODO: not yet supported
         operation=None,
     ):
         from ai4animation.Import.GLBImporter import GLB
@@ -322,14 +319,16 @@ class Motion:
 
         if not os.path.isfile(absolute_path):
             raise FileNotFoundError(f"BVH file not found: {absolute_path}")
-        return BVH(absolute_path, scale=scale).LoadMotion(names=names, operation=operation)
+        return BVH(absolute_path, scale=scale).LoadMotion(
+            names=names, operation=operation
+        )
 
     @classmethod
     def LoadFromFBX(
         cls,
         absolute_path,
         names=None,
-        scale=1.0, # TODO: not yet supported
+        scale=1.0,  # TODO: not yet supported
         operation=None,
     ):
         from ai4animation.Import.FBXImporter import FBX

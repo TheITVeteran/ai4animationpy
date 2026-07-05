@@ -84,6 +84,12 @@ calculate-a-running-standard-deviation>
         std = self.Norm[1]
         return (tensor * std) + mean
 
+    def GetMean(self):
+        return self.Norm[0]
+
+    def GetStd(self):
+        return self.Norm[1]
+
     def update_params(self, x):
         self.n += 1
         if self.n == 1:

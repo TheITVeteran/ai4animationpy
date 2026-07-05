@@ -54,4 +54,5 @@ class FeedTensor:
             print(
                 f"Did not feed all inputs for tensor: {self.Name} ({self.Pivot} / {self.Dims})"
             )
-        return Tensor.ToDevice(torch.tensor(self.Data, dtype=torch.float32))
+        # return Tensor.ToDevice(torch.tensor(self.Data, dtype=torch.float32))
+        return Tensor.ToDevice(torch.as_tensor(self.Data, dtype=torch.float32))

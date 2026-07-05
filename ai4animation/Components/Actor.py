@@ -57,7 +57,7 @@ class Actor(Component):
             parent_entity = bone.Entity.FindParent(self.BoneNames)
             if parent_entity is not None and (parent_bone := self.NameToBoneMap.get(parent_entity.Name)):
                 bone.SetParent(parent_bone)
-        
+
         #Initialize
         self.Root = self.Entity.GetTransform()
         self.Transforms = AI4Animation.Scene.GetTransforms(self.GetBoneEntityIndices())
@@ -469,6 +469,9 @@ class Actor(Component):
             self.Children = []
             self.Successors = []
             self.ZeroTransform = Transform.Identity()
+
+        def GetName(self):
+            return self.Entity.Name
 
         def SetTransform(self, value, FK=False):
             if FK:

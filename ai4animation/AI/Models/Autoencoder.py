@@ -25,6 +25,12 @@ class Model(nn.Module):
             embedding_dim, feature_dim, hidden_dim, dropout, activation
         )
 
+    def input_dim(self):
+        return self.Encoder.L1.InputSize
+
+    def output_dim(self):
+        return self.Encoder.L3.OutputSize
+
     def feature_dim(self):
         return self.Encoder.L1.InputSize
 

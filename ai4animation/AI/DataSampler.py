@@ -2,12 +2,37 @@
 """Threaded data sampler for asynchronous batch loading during training."""
 
 import os
-from collections import deque
+import threading
+from collections import deque, OrderedDict
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
 import numpy as np
 from ai4animation import Utility
 from tqdm import tqdm
+
+
+class LRUCache:
+    def __init__(self, capacity, function):
+        self._capacity = capacity
+        self._function = function
+        self._cache = OrderedDict()
+        self._lock = threading.Lock()
+
+    def Get(self, key):
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
+        value = self._function(key)
+        with self._lock:
+            self._cache[key] = value
+            if len(self._cache) > self._capacity:
+                self._cache.popitem(last=False)
+        return value
+
+    def Clear(self):
+        with self._lock:
+            self._cache.clear()
 
 
 class DataSampler:
@@ -20,6 +45,7 @@ class DataSampler:
         start_padding=0.0,
         end_padding=0.0,
         coverage=1.0,
+        cache=1.0,
     ):
         self.Dataset = dataset
         self.Framerate = framerate
@@ -28,6 +54,9 @@ class DataSampler:
         self.StartPadding = start_padding
         self.EndPadding = end_padding
         self.Coverage = coverage
+        self.Cache = LRUCache(
+            max(1, int(cache * len(self.Dataset))), self.Dataset.LoadMotion
+        )
 
         self.NumWorkers = Utility.GetNumWorkers()
         print(
@@ -42,7 +71,8 @@ class DataSampler:
             "FPS",
         )
 
-        self.Motions = [None] * len(self.Dataset)
+        self.Timestamps = [None] * len(self.Dataset)
+        self.Locks = [threading.Lock() for _ in range(len(self.Dataset))]
         with ThreadPoolExecutor(max_workers=self.NumWorkers) as executor:
             # Submit all tasks with their indices
             future_to_index = {
@@ -55,13 +85,11 @@ class DataSampler:
             ) as pbar:
                 for future in as_completed(future_to_index):
                     index = future_to_index[future]
-                    self.Motions[index] = future.result()
+                    motion = future.result()
+                    self.Timestamps[index] = motion.GetTimestamps(
+                        self.Framerate, self.StartPadding, self.EndPadding
+                    )
                     pbar.update(1)
-
-        self.Timestamps = [
-            m.GetTimestamps(self.Framerate, self.StartPadding, self.EndPadding)
-            for m in self.Motions
-        ]
 
         self.Samples = sum([len(t) for t in self.Timestamps])
         print(f"Per-Epoch Coverage: {self.Coverage}")
@@ -84,54 +112,23 @@ class DataSampler:
         secs = int(total_sec % 60)
         return f"{hrs}h {mins}m {secs}s"
 
-    # Creates batch of lists [[Motion=1, Timestamp=1]]
-    def SampleBatchesAcrossMotions(self):
-        samples = []
-        for i, m in enumerate(self.Motions):
-            for t in self.Timestamps[i]:
-                samples.append((m, t))
-        np.random.shuffle(samples)
-
-        batches = [
-            self.DataBatch(self.Function, samples[i : i + self.BatchSize])
-            for i in range(0, self.Samples, self.BatchSize)
-        ]
-        print("Training Batches:", len(batches))
-        return batches
-
     # Creates batch of tuples [(Motion=1, [Timestamps=N])]
     def SampleBatchesWithinMotions(self, current_epoch, total_epochs):
-        indices = np.arange(len(self.Motions))
+        indices = np.arange(len(self.Dataset))
         probabilities = [
-            len(self.Timestamps[i]) / self.Samples for i in range(len(self.Motions))
+            len(self.Timestamps[i]) / self.Samples for i in range(len(self.Dataset))
         ]
         batches = []
         for _ in range(self.BatchCount):
-            index = np.random.choice(indices, 1, probabilities)[0]
+            index = np.random.choice(indices, 1, p=probabilities)[0]
             batches.append(
                 self.DataBatch(
-                    self.Function,
-                    (
-                        self.Motions[index],
-                        np.random.choice(self.Timestamps[index], self.BatchSize),
-                    ),
+                    self,
+                    index,
+                    np.random.choice(self.Timestamps[index], self.BatchSize),
                 )
             )
         return self._Iterator(batches, current_epoch, total_epochs)
-
-    # Creates batch of tuples [(Motion=1, Timestamps=N)]
-    def SampleBatchesAsMotions(self):
-        batches = []
-        for i, m in enumerate(self.Motions):
-            batches.append(
-                self.DataBatch(self.Function, (self.Motions[i], self.Timestamps[i]))
-            )
-        return self._Iterator(batches, 1, 1)
-
-    def GetToySample(self):
-        return self.DataBatch(
-            self.Function, (self.Motions[0], np.array([0.0]))
-        ).Retrieve()
 
     def _Iterator(self, batches, current_epoch=None, total_epochs=None):
         pbar = tqdm(
@@ -142,31 +139,40 @@ class DataSampler:
             bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
         )
 
-        with ThreadPoolExecutor(max_workers=self.NumWorkers) as executor:
-            futures_queue = deque()
+        try:
+            with ThreadPoolExecutor(max_workers=self.NumWorkers) as executor:
+                futures_queue = deque()
 
-            batch_idx = 0
+                batch_idx = 0
 
-            for _ in range(len(batches)):
-                # Submit next batches while available
-                while len(futures_queue) < self.NumWorkers and batch_idx < len(batches):
-                    future = executor.submit(batches[batch_idx].Retrieve)
-                    futures_queue.append((batch_idx, future))
-                    batch_idx += 1
+                for _ in range(len(batches)):
+                    # Submit next batches while available
+                    while len(futures_queue) < self.NumWorkers and batch_idx < len(
+                        batches
+                    ):
+                        future = executor.submit(batches[batch_idx].Retrieve)
+                        futures_queue.append((batch_idx, future))
+                        batch_idx += 1
 
-                # Get the result from the oldest submitted batch
-                _, future = futures_queue.popleft()
+                    # Get the result from the oldest submitted batch
+                    _, future = futures_queue.popleft()
 
-                yield future.result()
+                    yield future.result()
 
-                pbar.update(1)
-
-        pbar.close()
+                    pbar.update(1)
+        finally:
+            pbar.close()
 
     class DataBatch:
-        def __init__(self, fn, args):
-            self.Fn = fn
-            self.Args = args
+        def __init__(self, sampler, index, timestamps):
+            self.Sampler = sampler
+            self.Index = index
+            self.Timestamps = timestamps
 
         def Retrieve(self):
-            return self.Fn(self.Args)
+            # if self.Sampler.Locks[self.Index].locked():
+            #     print(f"Waiting for motion {self.Index} (locked by another thread)")
+            with self.Sampler.Locks[self.Index]:
+                motion = self.Sampler.Cache.Get(self.Index)
+                timestamps = self.Timestamps
+                return self.Sampler.Function((motion, timestamps))

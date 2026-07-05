@@ -14,9 +14,9 @@ from .AI.Library.Statistics import RunningStatistics
 from .AI.Models import (
     Autoencoder,
     CategoricalEncoderDecoder,
-    SequentialMLP,
     CxM,
     MultiLayerPerceptron,
+    SequentialMLP,
 )
 from .AI.Optimizers.AdamWR import AdamW, CyclicScheduler
 from .AI.Optimizers.CosineAnnealingOptimizer import CosineAnnealingOptimizer
@@ -26,11 +26,11 @@ from .AI4Animation import AI4Animation
 from .Animation.ContactModule import ContactModule
 from .Animation.Dataset import Dataset
 from .Animation.GuidanceModule import GuidanceModule
+from .Animation.Hierarchy import Hierarchy
 from .Animation.MirrorModule import MirrorModule
 from .Animation.Module import Module
 
 # Animation classes
-from .Animation.Hierarchy import Hierarchy
 from .Animation.Motion import Motion
 from .Animation.MotionModule import MotionModule
 from .Animation.PID import PID
@@ -44,6 +44,9 @@ from .Components.Actor import Actor
 from .Components.Component import Component
 from .Components.MeshRenderer import MeshRenderer
 from .Components.MotionEditor import MotionEditor
+
+# Core classes
+from .Core import Physics
 from .Entity import Entity
 
 # IK classes
@@ -79,6 +82,8 @@ __all__ = [
     "IK",
     "Import",
     "Components",
+    # Core
+    "Physics",
     # Animation
     "Motion",
     "Hierarchy",

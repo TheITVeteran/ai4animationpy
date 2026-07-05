@@ -363,7 +363,7 @@ def Sum(values, axis=-1, keepDim=True):
     if backend == Backend.NumPy:
         return np.sum(values, axis=axis, keepdims=keepDim)
     if backend == Backend.PyTorch:
-        return torch.sum(values, dim=axis, keepDim=keepDim)
+        return torch.sum(values, dim=axis, keepdim=keepDim)
 
 
 def CumulativeSum(values, axis, backend=None):

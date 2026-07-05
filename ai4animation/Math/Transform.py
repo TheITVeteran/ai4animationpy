@@ -182,6 +182,13 @@ def Normalize(tensor):
     return tensor
 
 
+def Mean(tensor):
+    pos = Tensor.Mean(GetPosition(tensor), axis=-2, keepDim=True)
+    rot = Rotation.Normalize(Tensor.Mean(GetRotation(tensor), axis=-3, keepDim=True))
+    return TR(pos, rot)
+    # return Tensor.Mean(tensor, axis=axis, keepDim=keepDim)
+
+
 def GetMirror(tensor, axis):
     tensor = tensor.copy()
     if axis == Vector3.Axis.XPositive:

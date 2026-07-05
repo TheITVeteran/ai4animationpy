@@ -81,6 +81,15 @@ class ReadTensor:
 
         return values
 
+    def ReadXY(self, shape=None):
+        return self.ReadVector3(shape, x=True, y=True, z=False)
+
+    def ReadXZ(self, shape=None):
+        return self.ReadVector3(shape, x=True, y=False, z=True)
+
+    def ReadYZ(self, shape=None):
+        return self.ReadVector3(shape, x=False, y=True, z=True)
+
     def ReadRotation3D(self, shape):
         z = self.ReadVector3(shape)
         y = self.ReadVector3(shape)
@@ -91,6 +100,9 @@ class ReadTensor:
             print(
                 f"Did not feed all inputs for tensor: {self.Name} ({self.Pivot} / {self.Dims})"
             )
+        # return Tensor.ToDevice(
+        #     torch.tensor(self.Data.reshape(self.Shape), dtype=torch.float32)
+        # )
         return Tensor.ToDevice(
-            torch.tensor(self.Data.reshape(self.Shape), dtype=torch.float32)
+            torch.as_tensor(self.Data.reshape(self.Shape), dtype=torch.float32)
         )

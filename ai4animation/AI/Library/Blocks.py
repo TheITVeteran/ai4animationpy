@@ -135,49 +135,11 @@ class FiLMLinearBlock(torch.nn.Module):
     def output_dim(self):
         return self.L3.output_dim()
 
+    def film_dim(self):
+        return self.L1.film_dim()
+
     def forward(self, z, film):
         z = self.L1(z, film)
         z = self.L2(z, film)
         z = self.L3(z, film)
         return z
-
-
-class RegularizedFiLMLinearBlock(torch.nn.Module):
-    def __init__(
-        self,
-        input_size,
-        output_size,
-        regularization_size,
-        hidden_size,
-        film_size,
-        dropout=Defaults.Dropout,
-        activation=Defaults.Activation,
-    ):
-        super(RegularizedFiLMLinearBlock, self).__init__()
-
-        self.L1 = FiLMLinearLayer(
-            input_size, hidden_size, film_size, dropout, activation
-        )
-        self.L2 = FiLMLinearLayer(
-            hidden_size, hidden_size, film_size, dropout, activation
-        )
-        self.L3 = FiLMLinearLayer(hidden_size, output_size, film_size, dropout, None)
-        self.R = FiLMLinearLayer(
-            hidden_size, regularization_size, film_size, dropout, None
-        )
-
-    def output_dim(self):
-        return self.L3.output_dim()
-
-    def regularization_dim(self):
-        return self.R.output_dim()
-
-    def forward(self, z, film):
-        z = self.L1(z, film)
-        z = self.L2(z, film)
-        y = self.L3(z, film)
-        if self.training:
-            r = self.R(z, film)
-            return y, r
-        else:
-            return y
